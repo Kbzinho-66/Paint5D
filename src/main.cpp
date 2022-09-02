@@ -238,10 +238,140 @@ void quadriculado(int distancia, Uint32 cor)
     }
 }
 
+int iPartOfNumber(float x) {
+    return (int) x;
+}
+
+float fPartOfNumber(float x) {
+    return iPartOfNumber(x + 0.5);
+}
+
+float rfPartOfNumber(float x) {
+    return 1 - fPartOfNumber(x);
+}
+
+Uint32 getRandomColor() {
+
+    int r, g, b;
+    r = rand() % 255;
+    g = rand() % 255;
+    b = rand() % 255;
+
+    return RGB(r, g, b);
+}
+
+void displayBresenhamCircle(int xc, int yc, int x, int y, Uint32 color) {
+    // Desenha todas as 8 coordenadas de (x, y), uma para cada octante
+
+    setPixel(xc+x, yc+y, color);
+    setPixel(xc-x, yc+y, color);
+    setPixel(xc+x, yc-y, color);
+    setPixel(xc-x, yc-y, color);
+    setPixel(xc+y, yc+x, color);
+    setPixel(xc-y, yc+x, color);
+    setPixel(xc+y, yc-x, color);
+    setPixel(xc-y, yc-x, color);
+
+}
+
+void bresenhamCircle(int xc, int yc, int radius, Uint32 color) {
+    int x = 0;
+    int y = radius;
+    int decisionParameter = 3 - 2 * radius;
+
+    displayBresenhamCircle(xc, yc, x, y, color);
+
+    while (y >= x) {
+        x++;
+
+        if (decisionParameter > 0) {
+            y--;
+            decisionParameter = decisionParameter + 4 * (x - y) + 10;
+        } else {
+            decisionParameter = decisionParameter + 4 * x + 6;
+        }
+
+        displayBresenhamCircle(xc, yc, x, y, color);
+    }
+
+}
+
+void bresenhamCircle(Point p, int radius, Uint32 color) {
+    int xc = p.x;
+    int yc = p.y;
+    bresenhamCircle(xc, yc, radius, color);
+}
+
+void floodFill(int x, int y, Uint32 newColor, Uint32 oldColor) {
+
+    if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+        return;
+    }
+
+    stack<Point> st;
+    st.push(getPoint(x, y));
+
+    while (st.size() > 0) {
+        Point p = st.top();
+        st.pop();
+
+        x = p.x;
+        y = p.y;
+        if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+            continue;
+        }
+
+        if (getPixel(x, y) == oldColor) {
+            setPixel(x, y, newColor);
+            st.push(getPoint(x-1, y));
+            st.push(getPoint(x+1, y));
+            st.push(getPoint(x, y-1));
+            st.push(getPoint(x, y+1));
+        }
+    }
+}
+
+void floodFill(Point p, Uint32 newColor, Uint32 oldColor) {
+    int x, y;
+    x = p.x;
+    y = p.y;
+    floodFill(x, y, newColor, oldColor);
+}
+
+void bezierCurve(Point p[4], Uint32 color) {
+    double xu, yu, esp;
+
+    for (double u = 0; u < 1; u += 0.0001) {
+        esp = 1 - u;
+        xu = ( pow(esp, 3) * p[0].x ) + ( 3*u * esp*esp * p[1].x ) + ( 3*esp * u*u * p[2].x ) + ( pow(u, 3) * p[3].x );
+        yu = ( pow(esp, 3) * p[0].y ) + ( 3*u * esp*esp * p[1].y ) + ( 3*esp * u*u * p[2].y ) + ( pow(u, 3) * p[3].y );
+        setPixel((int) xu, (int) yu, color);
+    }
+}
+
+void rectangle(Point p1, Point p2, Uint32 color, bool fill) {
+    bresenham(p1.x, p1.y, p2.x, p1.y, color);
+    bresenham(p1.x, p1.y, p1.x, p2.y, color);
+    bresenham(p1.x, p2.y, p2.x, p2.y, color);
+    bresenham(p2.x, p1.y, p2.x, p2.y, color);
+
+    if (fill) {
+        for (int y = p1.y; y < p2.y; y++) {
+            bresenham(p1.x, y, p2.x, y, color);
+        }
+    }
+}
+
 // Aqui ocorrem as chamadas das funções a ser exibidas na janela
 void display()
 {
-    //quadriculado(20, RGB(255, 0, 0));
+    Point p1, p2;
+    p1 = getPoint(0, 599 - 78);
+    p2 = getPoint(799, 599);
+
+    Uint32 color = RGB(210, 107, 70);
+
+    rectangle(p1, p2, color, true);
 }
 
 void reset_screen()
