@@ -24,9 +24,9 @@ SDL_Renderer * renderer;
 std::string titulo = "SDL BMP ";
 
 // Valores RGB para a cor de fundo da janela
-const int VERMELHO = 0;
-const int VERDE = 0;
-const int AZUL = 0;
+const int VERMELHO = 255;
+const int VERDE = 255;
+const int AZUL = 255;
 
 /******************** FUNÇÕES BÁSICAS ********************/
 
@@ -216,7 +216,7 @@ void floodFill(Point p, Uint32 color) {
 }
 
 // Desenha uma linha de Bresenham a partir de 4 coordenadas e uma cor
-void bresenham(int x1, int y1, int x2, int y2, Uint32 cor) {
+void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
     int x,y,dx,dy,dx1,dy1,px,py,xe,ye,i;
 
     dx=x2-x1;
@@ -282,20 +282,25 @@ void bresenham(int x1, int y1, int x2, int y2, Uint32 cor) {
 }
 
 // Desenha uma linha de Bresenham com base em 2 pontos e uma cor
-void bresenham(Point p1, Point p2, Uint32 color) {
-    bresenham(p1.x, p1.y, p2.x, p2.y, color);
+void bresenhamLine(Point p1, Point p2, Uint32 color) {
+    bresenhamLine(p1.x, p1.y, p2.x, p2.y, color);
+}
+
+// Desenha um retângulo com o canto superior esquerdo em (x1, y1) e canto inferior direito em (x2, y2)
+void rectangle(int x1, int y1, int x2, int y2, Uint32 color, bool fill = false) {
+    bresenhamLine(x1, y1, x2, y1, color);
+    bresenhamLine(x1, y1, x1, y2, color);
+    bresenhamLine(x1, y2, x2, y2, color);
+    bresenhamLine(x2, y1, x2, y2, color);
+
+    if (fill) {
+        floodFill(x1 + 1, y1 + 1, color);
+    }
 }
 
 // Desenha um retângulo com base no ponto superior esquerdo, no inferior direito e em uma cor
 void rectangle(Point p1, Point p2, Uint32 color, bool fill = false) {
-    bresenham(p1.x, p1.y, p2.x, p1.y, color);
-    bresenham(p1.x, p1.y, p1.x, p2.y, color);
-    bresenham(p1.x, p2.y, p2.x, p2.y, color);
-    bresenham(p2.x, p1.y, p2.x, p2.y, color);
-
-    if (fill) {
-        floodFill(p1.x + 1, p1.y + 1, color);
-    }
+    rectangle(p1.x, p1.y, p2.x, p2.y, color, fill);
 }
 
 // Desenha um círculo de Bresenham com base em duas coordenadas para o ponto central,
@@ -343,17 +348,36 @@ void bezierCurve(Point p[4], Uint32 color) {
     }
 }
 
-// Aqui ocorrem as chamadas das funções a ser exibidas na janela
-void display() {
-    Point p1, p2;
-    p1 = getPoint(0, 599 - 78);
-    p2 = getPoint(799, 599);
+// Monta a barra com todas as opções de desenho
+void displayToolbar() {
+    int barHeight = 78;
+    int barTop = height - barHeight;
+    Point p1 = getPoint(0, barTop);
+    Point p2 = getPoint(799, barTop);
+    Uint32 barColor = RGB(27, 26, 35);
 
-    Uint32 color = RGB(210, 107, 70);
+    bresenhamLine(p1, p2, barColor);
+    floodFill(1, barTop + 1, barColor);
 
-    rectangle(p1, p2, color, true);
+    Uint32 iconColor = RGB(234, 236, 234);
+    int margin, x1, x2, y1, y2, iconSize;
+    iconSize = 52;
+    margin = (barHeight - iconSize) / 2;
+
+    y1 = barTop + margin;
+    y2 = y1 + iconSize;
+
+    // Primeiros 8 botões
+    for (int i = 0; i < 8; i++) {
+        x1 = margin + (i * iconSize) + (i * margin);
+        x2 = x1 + iconSize;
+        rectangle(getPoint(x1, y1), getPoint(x2, y2), iconColor, true);
+    }
+
+    // Paleta de cores
 }
 
+// Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL
 void reset_screen() {
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
@@ -450,18 +474,65 @@ int main() {
                 }
             }
 
-            // Seta a cor de fundo da janela para a informada nas
-            // constantes VERMELHO, VERDE e AZUL
             reset_screen();
 
             // mostra_bmp(bmp);
 
-            display();
+            displayToolbar();
 
             SDL_UpdateWindowSurface(window);
         }
 
     } else {
-        printf("Sem imagem a carregar.\n");
+
+        SDL_Window * window = SDL_CreateWindow(titulo.c_str(),
+            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+            800, 600,
+            SDL_WINDOW_RESIZABLE
+        );
+
+        window_surface = SDL_GetWindowSurface(window);
+
+        pixels = (unsigned int *) window_surface->pixels;
+        width = window_surface->w;
+        height = window_surface->h;
+
+        printf("Pixel format: %s\n", SDL_GetPixelFormatName(window_surface->format->format));
+
+        while (true) {
+
+            SDL_Event event;
+
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_QUIT) {
+                    exit(0);
+                }
+
+                if (event.type == SDL_WINDOWEVENT) {
+                    if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                        window_surface = SDL_GetWindowSurface(window);
+                        pixels = (unsigned int *) window_surface->pixels;
+                        width = window_surface->w;
+                        height = window_surface->h;
+                        printf("Size changed: %d, %d\n", width, height);
+                    }
+                }
+
+                // Se o mouse é movimentado
+                if (event.type == SDL_MOUSEMOTION) {
+                    // Mostra as posições x e y do mouse
+                    showMousePosition(window,event.motion.x,event.motion.y);
+                }
+                if (event.type == SDL_MOUSEBUTTONDOWN) {
+                    printf("Mouse pressed on (%d,%d)\n",event.motion.x,event.motion.y) ;
+                }
+            }
+
+            reset_screen();
+
+            displayToolbar();
+
+            SDL_UpdateWindowSurface(window);
+        }
     }
 }
