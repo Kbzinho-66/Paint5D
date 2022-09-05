@@ -389,7 +389,7 @@ void reset_screen() {
 //void copia_para_bmp(Bit)
 // Inicializa o SDL, abre a janela e controla o loop
 // principal do controle de eventos
-int main() {
+int main(int argc, char* argv[]) {
     // Inicializações iniciais obrigatórias
 
     int result;
