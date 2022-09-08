@@ -19,6 +19,7 @@ int width, height;
 SDL_Surface * window_surface;
 SDL_Surface * imagem;
 SDL_Renderer * renderer;
+bool ctrlState = false;
 
 // Título da janela
 std::string titulo = "SDL BMP ";
@@ -27,6 +28,9 @@ std::string titulo = "SDL BMP ";
 const int VERMELHO = 255;
 const int VERDE = 255;
 const int AZUL = 255;
+
+// Não acho esse nome bom, mas ainda não pensei num melhor
+enum class Shape {Line, Rectangle, Circle, Polygon, Bucket};
 
 /******************** FUNÇÕES BÁSICAS ********************/
 
@@ -378,12 +382,18 @@ void displayToolbar() {
 }
 
 // Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL
-void reset_screen() {
+void resetScreen() {
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
         }
     }
+}
+
+// Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação
+void handleClick(Point p, Shape op) {
+
+    // TODO
 }
 
 //void copia_para_bmp(Bit)
@@ -392,7 +402,8 @@ void reset_screen() {
 int main(int argc, char* argv[]) {
     // Inicializações iniciais obrigatórias
 
-    int result;
+    int result, x, y;
+    Shape op;
 
     setlocale(LC_ALL, NULL);
 
@@ -467,14 +478,17 @@ int main(int argc, char* argv[]) {
                 }
 
                 if(event.type == SDL_MOUSEBUTTONDOWN) {
+                    x = event.motion.x;
+                    y = event.motion.y;
+                    
                     /*Se o botão esquerdo do mouse é pressionado */
                     if(event.button.button == SDL_BUTTON_LEFT) {
-                        printf("Mouse pressed on (%d,%d)\n",event.motion.x,event.motion.y) ;
+                        printf("Mouse pressed on (%d,%d)\n",x, y) ;
                     }
                 }
             }
 
-            reset_screen();
+            resetScreen();
 
             // mostra_bmp(bmp);
 
@@ -498,8 +512,14 @@ int main(int argc, char* argv[]) {
         height = window_surface->h;
 
         printf("Pixel format: %s\n", SDL_GetPixelFormatName(window_surface->format->format));
+        bool firstRun = true;
 
         while (true) {
+
+            if (firstRun) {
+                resetScreen();
+                firstRun = false;
+            }
 
             SDL_Event event;
 
@@ -518,19 +538,88 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
+                if (event.type == SDL_KEYDOWN) {
+                    switch(event.key.keysym.sym) {
+
+                        case SDLK_n:
+                            resetScreen();
+                            printf("Limpar tela.\n");
+                            break;
+
+                        case SDLK_s:
+                            // TODO Salvar imagem
+                            printf("Salvar imagem.\n");
+                            break;
+
+                        case SDLK_l:
+                            // TODO Escolher os pontos pra linha
+                            op = Shape::Line;
+                            printf("Desenhar linha.\n");
+                            break;
+
+                        case SDLK_r:
+                            // TODO Escolher os cantos do retângulo
+                            printf("Desenhar um retângulo.\n");
+                            break;
+
+                        case SDLK_p:
+                            // TODO Escolher as diversas arestas do polígono
+                            printf("Desenhar um polígono.\n");
+                            break;
+
+                        case SDLK_c:
+                            // TODO Escolher o ponto central e o raio do círculo
+                            printf("Desenhar círculo.\n");
+                            break;
+
+                        case SDLK_b:
+                            // TODO Escolher os 4 pontos da curva de Bézier
+                            printf("Desenhar Curva de Bézier.\n");
+                            break;
+
+                        case SDLK_f:
+                            // TODO Escolher um ponto pra fazer o flood fill
+                            printf("Flood fill.\n");
+                            break;
+
+                        case SDLK_LCTRL:
+                        case SDLK_RCTRL:
+                            ctrlState = true;
+                            break;
+
+                        case SDLK_z:
+                            if (ctrlState) {
+                                // TODO Fazer o UNDO
+                                printf("Undo.\n");
+                            }
+
+                        case SDLK_q:
+                            break;
+                        }
+                } else if (event.type == SDL_KEYUP) {
+                    if (event.key.keysym.sym == SDLK_LCTRL || event.key.keysym.sym == SDLK_RCTRL) {
+                        ctrlState = false;
+                    }
+                }
+
                 // Se o mouse é movimentado
                 if (event.type == SDL_MOUSEMOTION) {
                     // Mostra as posições x e y do mouse
                     showMousePosition(window,event.motion.x,event.motion.y);
                 }
-                if (event.type == SDL_MOUSEBUTTONDOWN) {
-                    printf("Mouse pressed on (%d,%d)\n",event.motion.x,event.motion.y) ;
+
+                if(event.type == SDL_MOUSEBUTTONDOWN) {
+                    x = event.motion.x;
+                    y = event.motion.y;
+                    
+                    /*Se o botão esquerdo do mouse é pressionado */
+                    if(event.button.button == SDL_BUTTON_LEFT) {
+                        handleClick(getPoint(x, y), op);
+                    }
                 }
             }
 
-            reset_screen();
-
-            displayToolbar();
+            // displayToolbar(); // FIXME Algo aqui tá entrando em loop sem o resetScreen
 
             SDL_UpdateWindowSurface(window);
         }
