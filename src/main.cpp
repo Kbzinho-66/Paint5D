@@ -6,6 +6,8 @@
 #include <stack>
 #include <sstream>
 #include <unistd.h>
+#include <time.h>
+#include <vector>
 
 std::string FILENAME ="marvel-wallpaper.bmp";
 std::string SAIDA ="saida.bmp";
@@ -20,6 +22,7 @@ SDL_Surface * window_surface;
 SDL_Surface * imagem;
 SDL_Renderer * renderer;
 bool ctrlState = false;
+std::vector<Point> points;
 
 // Título da janela
 std::string titulo = "SDL BMP ";
@@ -29,8 +32,9 @@ const int VERMELHO = 255;
 const int VERDE = 255;
 const int AZUL = 255;
 
-// Não acho esse nome bom, mas ainda não pensei num melhor
-enum class Shape {Line, Rectangle, Circle, Polygon, Bucket};
+// Diferentes funções de desenho
+enum class Function {None, Line, Rectangle, Circle, Polygon, Bezier, Bucket};
+Function f;
 
 /******************** FUNÇÕES BÁSICAS ********************/
 
@@ -339,17 +343,75 @@ void bresenhamCircle(Point p, int radius, Uint32 color) {
 }
 
 // Desenha uma curva de Bézier com base em 4 pontos e uma cor.
-// p[0] e p[3] são os pontos extremos da curva, pelos quais a curva vai passar
-// p[1] e p[2] são pontos de controle, que puxam a curva, mas não fazem parte dela
-void bezierCurve(Point p[4], Uint32 color) {
+// p.at(0) e p.at(3) são os pontos extremos da curva, pelos quais a curva vai passar
+// p.at(1) e p.at(2) são pontos de controle, que puxam a curva, mas não fazem parte dela
+void bezierCurve(std::vector<Point> p, Uint32 color) {
     double xu, yu, esp;
 
     for (double u = 0; u < 1; u += 0.0001) {
         esp = 1 - u;
-        xu = ( pow(esp, 3) * p[0].x ) + ( 3*u * esp*esp * p[1].x ) + ( 3*esp * u*u * p[2].x ) + ( pow(u, 3) * p[3].x );
-        yu = ( pow(esp, 3) * p[0].y ) + ( 3*u * esp*esp * p[1].y ) + ( 3*esp * u*u * p[2].y ) + ( pow(u, 3) * p[3].y );
+        xu = ( pow(esp, 3) * p.at(0).x ) + ( 3*u * esp*esp * p.at(1).x ) + ( 3*esp * u*u * p.at(2).x ) + ( pow(u, 3) * p.at(3).x );
+        yu = ( pow(esp, 3) * p.at(0).y ) + ( 3*u * esp*esp * p.at(1).y ) + ( 3*esp * u*u * p.at(2).y ) + ( pow(u, 3) * p.at(3).y );
         setPixel((int) xu, (int) yu, color);
     }
+}
+
+// Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL
+void resetScreen() {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
+        }
+    }
+}
+
+// Vou usar isso só enquanto não tiver como escolher uma cor
+Uint32 getRandomColor() {
+
+    int r, g, b;
+    r = rand() % 255;
+    g = rand() % 255;
+    b = rand() % 255;
+
+    return RGB(r, g, b);
+}
+
+// Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação
+void handleClick(Point p) {
+
+    switch (f) {
+        case Function::Line:
+            points.push_back(p); 
+            if (points.size() == 2) {
+                bresenhamLine(points.at(0), points.at(1), getRandomColor());
+                f = Function::None;
+            }
+            break;
+
+        case Function::Bezier:
+            points.push_back(p); 
+            if (points.size() == 4) {
+                bezierCurve(points, getRandomColor());
+                f = Function::None;
+            }
+            break;
+
+        case Function::Rectangle:
+            points.push_back(p);
+            if (points.size() == 2) {
+                rectangle(points.at(0), points.at(1), getRandomColor());
+                f = Function::None;
+            }
+            break;
+
+        case Function::Bucket: 
+            floodFill(p, getRandomColor()); 
+            break;
+        
+        default:
+            break;
+    }
+
 }
 
 // Monta a barra com todas as opções de desenho
@@ -381,21 +443,6 @@ void displayToolbar() {
     // Paleta de cores
 }
 
-// Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL
-void resetScreen() {
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
-        }
-    }
-}
-
-// Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação
-void handleClick(Point p, Shape op) {
-
-    // TODO
-}
-
 //void copia_para_bmp(Bit)
 // Inicializa o SDL, abre a janela e controla o loop
 // principal do controle de eventos
@@ -403,9 +450,9 @@ int main(int argc, char* argv[]) {
     // Inicializações iniciais obrigatórias
 
     int result, x, y;
-    Shape op;
 
     setlocale(LC_ALL, NULL);
+    srand(time(NULL));
 
     SDL_Init(SDL_INIT_VIDEO);
 
@@ -501,8 +548,7 @@ int main(int argc, char* argv[]) {
 
         SDL_Window * window = SDL_CreateWindow(titulo.c_str(),
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-            800, 600,
-            SDL_WINDOW_RESIZABLE
+            800, 600, SDL_WINDOW_SHOWN
         );
 
         window_surface = SDL_GetWindowSurface(window);
@@ -552,14 +598,19 @@ int main(int argc, char* argv[]) {
                             break;
 
                         case SDLK_l:
-                            // TODO Escolher os pontos pra linha
-                            op = Shape::Line;
-                            printf("Desenhar linha.\n");
+                            if (f != Function::Line) {
+                                f = Function::Line;
+                                points.clear();
+                                printf("Desenhar linha.\n");
+                            }
                             break;
 
                         case SDLK_r:
-                            // TODO Escolher os cantos do retângulo
-                            printf("Desenhar um retângulo.\n");
+                            if (f != Function::Rectangle) {
+                                f = Function::Rectangle;
+                                points.clear();
+                                printf("Desenhar um retângulo.\n");
+                            }
                             break;
 
                         case SDLK_p:
@@ -573,13 +624,18 @@ int main(int argc, char* argv[]) {
                             break;
 
                         case SDLK_b:
-                            // TODO Escolher os 4 pontos da curva de Bézier
-                            printf("Desenhar Curva de Bézier.\n");
+                            if (f != Function::Bezier) {
+                                f = Function::Bezier;
+                                points.clear();
+                                printf("Desenhar Curva de Bézier.\n");
+                            }
                             break;
 
                         case SDLK_f:
-                            // TODO Escolher um ponto pra fazer o flood fill
-                            printf("Flood fill.\n");
+                            if (f != Function::Bucket) {
+                                f = Function::Bucket;
+                                printf("Flood fill.\n");
+                            }
                             break;
 
                         case SDLK_LCTRL:
@@ -614,7 +670,7 @@ int main(int argc, char* argv[]) {
                     
                     /*Se o botão esquerdo do mouse é pressionado */
                     if(event.button.button == SDL_BUTTON_LEFT) {
-                        handleClick(getPoint(x, y), op);
+                        handleClick(getPoint(x, y));
                     }
                 }
             }
