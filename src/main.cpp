@@ -172,6 +172,20 @@ void displayBresenhamCircle(int xc, int yc, int x, int y, Uint32 color) {
 
 }
 
+int euclideanDistance(Point p1, Point p2) {
+
+    int x1, y1, x2, y2;
+    x1 = p1.x;
+    y1 = p1.y;
+    x2 = p2.x;
+    y2 = p2.y;
+
+    double dist = pow(x2 - x1, 2) + pow(y2 - y1, 2);
+    dist = sqrt(dist);
+
+    return (int) dist;
+}
+
 /******************** FUNÇÕES DE DESENHO ********************/
 
 // Preenche uma região com uma cor partindo de um ponto (x,y) enquanto houver pixels da cor original
@@ -404,6 +418,25 @@ void handleClick(Point p) {
             }
             break;
 
+        case Function::Circle:
+            if (points.empty()) {
+                points.push_back(p);
+            } else {
+                int radius = euclideanDistance(points.at(0), p);
+                bresenhamCircle(points.at(0), radius, getRandomColor());
+                f = Function::None;
+            }
+            break;
+
+        case Function::Polygon:
+            if (points.empty()) {
+                points.push_back(p);
+            } else {
+                bresenhamLine(points.back(), p, getRandomColor());
+                points.push_back(p);
+            }
+            break;
+
         case Function::Bucket: 
             floodFill(p, getRandomColor()); 
             break;
@@ -614,13 +647,19 @@ int main(int argc, char* argv[]) {
                             break;
 
                         case SDLK_p:
-                            // TODO Escolher as diversas arestas do polígono
-                            printf("Desenhar um polígono.\n");
+                            if (f != Function::Polygon) {
+                                f = Function::Polygon;
+                                points.clear();
+                                printf("Desenhar um polígono.\n");
+                            }
                             break;
 
                         case SDLK_c:
-                            // TODO Escolher o ponto central e o raio do círculo
-                            printf("Desenhar círculo.\n");
+                            if (f != Function::Circle) {
+                                f = Function::Circle;
+                                points.clear();
+                                printf("Desenhar círculo.\n");
+                            }
                             break;
 
                         case SDLK_b:
