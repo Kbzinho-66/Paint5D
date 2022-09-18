@@ -10,8 +10,8 @@
 #include <vector>
 
 // Nome dos arquivos a serem utilizados / gerados pelo programa.
-std::string FILENAME_IN, FILENAME_OUT;
-int fileSeq = 0;
+std::string FILENAME_IN ="painel_controle_filled_final.bmp";
+std::string FILENAME_OUT ="wonderful";
 
 // LOGS de saída do programa.
 std::string ROOT_LOG = "\033[1;33mROOT: \033[0m";
@@ -21,18 +21,28 @@ std::string FUNCTION_LOG = "\033[0;35mFUNCTION: \033[0m";
 std::string FUNCTION_ARGS_LOG = "\033[0;35mFUNCTION_ARGS: \033[0m";
 
 // Estrutura para representar pontos.
-typedef struct {int x, y;} Point;
+typedef struct { int x, y; } Point;
+
+// Estrutura para representar a cor selecionada.
+typedef struct { int R, G, B; bool hasBeenSet; } SelectedColor;
 
 // Variáveis necessárias para o SDL.
 unsigned int * pixels;
 int width, height;
 SDL_Surface * window_surface;
-SDL_Surface * image;
+SDL_Surface * control_panel_surface;
+SDL_Surface * image_surface;
 SDL_Renderer * renderer;
-bool ctrlState = false;
-std::vector<Point> points;
 
-std::string titulo = "Paint5D ";
+// Outras variáveis.
+int fileSeq = 0;
+bool ctrlState = false;
+bool flagPanel = false;
+std::vector<Point> points;
+SelectedColor selectedColor;
+
+std::string nome_programa = "Paint5D ";
+const int controlPanelHeight = 80;
 
 // Valores RGB para a cor de fundo da janela.
 const int VERMELHO = 255;
@@ -47,9 +57,7 @@ Function f;
 
 // Gera uma estrutura Point a partir de valores para x e y.
 Point getPoint(int x, int y) {
-    Point p;
-    p.x = x;
-    p.y = y;
+    Point p = { .x = x, .y = y };
     return p;
 }
 
@@ -104,7 +112,7 @@ void setPixel(Point p, Uint32 color) {
 // Mostra na barra de título da janela a posição atual do mouse.
 void showMousePosition(SDL_Window * window, int x, int y) {
     std::stringstream ss;
-    ss << titulo << " X: " << x << " Y: " << y;
+    ss << nome_programa << " X: " << x << " Y: " << y;
     SDL_SetWindowTitle(window, ss.str().c_str());
 }
 
@@ -199,6 +207,10 @@ int euclideanDistance(Point p1, Point p2) {
 void floodFill(int x, int y, Uint32 newColor, Uint32 oldColor) {
 
     if (x < 0 || x > width - 1 || y < 0 || y > height - 1) {
+        return;
+    }
+
+    if (newColor == oldColor) {
         return;
     }
 
@@ -353,7 +365,6 @@ void bresenhamCircle(int xc, int yc, int radius, Uint32 color) {
 
         displayBresenhamCircle(xc, yc, x, y, color);
     }
-
 }
 
 // Desenha um círculo de Bresenham com base em um Ponto central, um raio e uma cor.
@@ -380,6 +391,10 @@ void bezierCurve(std::vector<Point> p, Uint32 color) {
 
 /**************************************** FUNÇÕES DE DESENHO ****************************************/
 
+// "Bloqueia" a área do Painel de Controle para evitar que seja alterada pelas funções de desenho.
+void blockControlPanelArea(bool block = true) {
+    block ? height -= controlPanelHeight : height += controlPanelHeight;
+}
 
 // Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL.
 void resetScreen() {
@@ -390,7 +405,7 @@ void resetScreen() {
     }
 }
 
-// Vou usar isso só enquanto não tiver como escolher uma cor.
+// Retorna uma cor (Uint32 RGB) randômica.
 Uint32 getRandomColor() {
     int r, g, b;
     r = rand() % 255;
@@ -400,20 +415,125 @@ Uint32 getRandomColor() {
     return RGB(r, g, b);
 }
 
-// Deixa o programa em IDLE, aguardando o próximo comando por parte do usuário.
-void setStatusIDLE() {
-    points.clear();
-    f = Function::None;
-    printf("%sAguardando comando...\n", RUNTIME_LOG.c_str());
+// Retorna a cor (Uint32 RGB) selecionada pelo usuário, caso haja alguma.
+Uint32 getSelectedColor() {
+    if (selectedColor.hasBeenSet)
+        return RGB(selectedColor.R, selectedColor.G, selectedColor.B);
+    else
+        return getRandomColor();
 }
 
+void setSelectedColor(int r, int g, int b) {
+    selectedColor = { .R = r, .G = g, .B = b, .hasBeenSet = true};
+    blockControlPanelArea(false);
+    floodFill(644, 546, RGB(r, g, b));
+    blockControlPanelArea();
+}
+
+// Conecta o último ponto do vetor de pontos ao primeiro caso a operação de desenhar Polígonos for encerrada.
+inline void closePolygon() {
+    bresenhamLine(points.back(), points.front(), getSelectedColor());
+}
+
+// Deixa o programa em IDLE, aguardando o próximo comando por parte do usuário.
+void setStatusIDLE(bool logInfo = true) {
+    points.clear();
+    f = Function::None;
+    if (logInfo)
+        printf("%sAguardando comando...\n", RUNTIME_LOG.c_str());
+}
+
+// Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
+void saveBMP() {
+    SDL_Surface * temp_surface = SDL_CreateRGBSurface(0, 800, 520, 32, 0, 0, 0, 0);
+    SDL_BlitSurface( window_surface, NULL, temp_surface, NULL );
+
+    std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
+    int result = SDL_SaveBMP( temp_surface, fileName.c_str() );
+
+    if ( result < 0 ) {
+        printf("%sOcorreu um erro ao tentar salvar o arquivo.\n", ERROR_LOG.c_str());
+    } else {
+        printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), fileName.c_str());
+    }
+
+    SDL_FreeSurface(temp_surface);
+}
+
+// ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
+void drawLine() {
+    if (f != Function::Line) {
+        setStatusIDLE(false);
+        printf("%sDesenhar Linha.\n", FUNCTION_LOG.c_str());
+        f = Function::Line;
+    }
+}
+void drawRectangle() {
+    if (f != Function::Rectangle) {
+        setStatusIDLE(false);
+        printf("%sDesenhar Retangulo.\n", FUNCTION_LOG.c_str());
+        f = Function::Rectangle;
+    }
+}
+void drawPolygon() {
+    if (f != Function::Polygon) {
+        setStatusIDLE(false);
+		printf("%sDesenhar Poligono.\n", FUNCTION_LOG.c_str());
+		f = Function::Polygon;
+	}
+}
+void drawCircle() {
+    if (f != Function::Circle) {
+        setStatusIDLE(false);
+		printf("%sDesenhar Circulo.\n", FUNCTION_LOG.c_str());
+		f = Function::Circle;
+	}
+}
+void drawBezier() {
+    if (f != Function::Bezier) {
+        setStatusIDLE(false);
+		printf("%sDesenhar Curva de Bezier.\n", FUNCTION_LOG.c_str());
+		f = Function::Bezier;
+	}
+}
+void floodFill() {
+    if (f != Function::Bucket) {
+		printf("%sFlood-Fill.\n", FUNCTION_LOG.c_str());
+		f = Function::Bucket;
+	}
+}
+
+void clearScreen() {
+	printf("%sLimpando tela...\n", ROOT_LOG.c_str());
+	resetScreen();
+}
+void cancelOperation() {
+    if (f != Function::None) {
+        printf("%s Cancelando operacao...\n", ROOT_LOG.c_str());
+        if (f == Function::Polygon) {
+            closePolygon();
+            printf("%s Fechando poligono...\n", ROOT_LOG.c_str());
+        }
+        setStatusIDLE();
+    }
+}
+void saveToDisk() {
+    printf("%sSalvando imagem...\n", ROOT_LOG.c_str());
+    saveBMP();
+}
+void undoModification() {
+    printf("%sDesfazendo alteracao...\n", ROOT_LOG.c_str());
+     // TODO Fazer o UNDO
+}
+// ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
+
 // Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação.
-void handleClick(Point p) {
+void handleClickSurface(Point p) {
     switch (f) {
         case Function::Line:
             points.push_back(p); 
             if (points.size() == 2) {
-                bresenhamLine(points.at(0), points.at(1), getRandomColor());
+                bresenhamLine(points.at(0), points.at(1), getSelectedColor());
                 setStatusIDLE();
             }
             break;
@@ -421,7 +541,7 @@ void handleClick(Point p) {
         case Function::Rectangle:
             points.push_back(p);
             if (points.size() == 2) {
-                rectangle(points.at(0), points.at(1), getRandomColor());
+                rectangle(points.at(0), points.at(1), getSelectedColor());
                 setStatusIDLE();
             }
             break;
@@ -429,8 +549,9 @@ void handleClick(Point p) {
         case Function::Polygon:
             if (points.empty()) {
                 printf("%sPonto inicial do Poligono (X, Y): (%d, %d).\n", FUNCTION_ARGS_LOG.c_str(), p.x, p.y);
-            } else {
-                bresenhamLine(points.back(), p, getRandomColor());
+            }
+            else {
+                bresenhamLine(points.back(), p, getSelectedColor());
             }
             points.push_back(p);
             break;
@@ -439,7 +560,7 @@ void handleClick(Point p) {
             points.push_back(p);
             if (points.size() == 2) {
                 int radius = euclideanDistance(points.at(0), points.at(1));
-                bresenhamCircle(points.at(0), radius, getRandomColor());
+                bresenhamCircle(points.at(0), radius, getSelectedColor());
                 setStatusIDLE();
             }
             break;
@@ -447,13 +568,13 @@ void handleClick(Point p) {
         case Function::Bezier:
             points.push_back(p); 
             if (points.size() == 4) {
-                bezierCurve(points, getRandomColor());
+                bezierCurve(points, getSelectedColor());
                 setStatusIDLE();
             }
             break;
 
         case Function::Bucket: 
-            floodFill(p, getRandomColor());
+            floodFill(p, getSelectedColor());
             setStatusIDLE();
             break;
         
@@ -463,52 +584,86 @@ void handleClick(Point p) {
 
 }
 
-// Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
-void saveBMP() {
-    std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
-    int result = SDL_SaveBMP( window_surface, fileName.c_str() );
-
-    if ( result < 0 ) {
-        printf("%sOcorreu um erro ao tentar salvar o arquivo.\n", ERROR_LOG.c_str());
-    } else {
-        printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), fileName.c_str());
+// Recebe o ponto em que o usuário clicou e seleciona a função de acordo com a posição.
+void handleClickControlPanel(Point p) {
+    if (534 <= p.y && p.y <= 588 && (p.x <= 564 || p.x >= 720)) {
+        // FUNÇÕES
+        if (18 <= p.x && p.x <= 72)
+            clearScreen();
+        if (86 <= p.x && p.x <= 140)
+            saveToDisk();
+        if (156 <= p.x && p.x <= 210)
+            drawLine();
+        if (224 <= p.x && p.x <= 278)
+            drawRectangle();
+        if (294 <= p.x && p.x <= 348)
+            drawPolygon();
+        if (362 <= p.x && p.x <= 416)
+            drawCircle();
+        if (430 <= p.x && p.x <= 484)
+            drawBezier();
+        if (500 <= p.x && p.x <= 554)
+            floodFill();
+        if (722 <= p.x && p.x <= 776)
+            undoModification();
+    }
+    else if (p.x >= 564 || p.x <= 720) {
+        // CORES
+        if (540 <= p.y && p.y <= 550) {
+            if (580 <= p.x && p.x <= 706) {
+                if (selectedColor.hasBeenSet) {
+                    setSelectedColor(255, 255, 255);
+                    selectedColor.hasBeenSet = false;
+                    printf("%sRestaurando escolha randomica de cores...\n", ROOT_LOG.c_str());
+                }
+            }
+        }
+        if (560 <= p.y && p.y <= 568) {
+            if (580 <= p.x && p.x <= 588)
+                setSelectedColor(0, 0, 0); //BLACK
+            if (592 <= p.x && p.x <= 600)
+                setSelectedColor(127, 127, 127); //DARK_GRAY
+            if (606 <= p.x && p.x <= 614)
+                setSelectedColor(136, 0, 21); //DARK_BROWN
+            if (620 <= p.x && p.x <= 628)
+                setSelectedColor(237, 28, 36); //RED
+            if (632 <= p.x && p.x <= 640)
+                setSelectedColor(255, 127, 38); //DARK_ORANGE
+            if (644 <= p.x && p.x <= 652)
+                setSelectedColor(255, 242, 0); //DARK_YELLOW
+            if (658 <= p.x && p.x <= 666)
+                setSelectedColor(34, 177, 76); //DARK_GREEN
+            if (672 <= p.x && p.x <= 680)
+                setSelectedColor(0, 162, 232); //DARK_TURQUOISE
+            if (684 <= p.x && p.x <= 692)
+                setSelectedColor(63, 72, 204); //DARK_BLUE
+            if (698 <= p.x && p.x <= 706)
+                setSelectedColor(163, 73, 255); //DARK_PURPLE
+        }
+        if (572 <= p.y && p.y <= 580) {
+            if (580 <= p.x && p.x <= 588)
+                setSelectedColor(255, 255, 255); //WHITE
+            if (592 <= p.x && p.x <= 600)
+                setSelectedColor(195, 195, 195); //LIGHT_GRAY
+            if (606 <= p.x && p.x <= 614)
+                setSelectedColor(185, 122, 87); //LIGHT_BROWN
+            if (620 <= p.x && p.x <= 628)
+                setSelectedColor(255, 174, 201); //LIGHT_PINK
+            if (632 <= p.x && p.x <= 640)
+                setSelectedColor(255, 201, 14); //LIGHT_ORANGE
+            if (644 <= p.x && p.x <= 652)
+                setSelectedColor(239, 228, 176); //LIGHT_YELLOW
+            if (658 <= p.x && p.x <= 666)
+                setSelectedColor(181, 230, 29); //LIGHT_GREEN
+            if (672 <= p.x && p.x <= 680)
+                setSelectedColor(153, 217, 234); //LIGHT_TURQUOISE
+            if (684 <= p.x && p.x <= 692)
+                setSelectedColor(112, 146, 190); //LIGHT_DARK_BLUE
+            if (698 <= p.x && p.x <= 706)
+                setSelectedColor(200, 191, 231); //LIGHT_PURPLE
+        }
     }
 }
-
-// Só conecta o último ponto do vetor de pontos ao primeiro quando a operação de desenhar Polígonos é encerrada.
-inline void closePolygon() {
-    bresenhamLine(points.back(), points.front(), getRandomColor());
-}
-
-// Monta a barra com todas as opções de desenho.
-void displayToolbar() {
-    int barHeight = 78;
-    int barTop = height - barHeight;
-    Point p1 = getPoint(0, barTop);
-    Point p2 = getPoint(799, barTop);
-    Uint32 barColor = RGB(27, 26, 35);
-
-    bresenhamLine(p1, p2, barColor);
-    floodFill(1, barTop + 1, barColor);
-
-    Uint32 iconColor = RGB(234, 236, 234);
-    int margin, x1, x2, y1, y2, iconSize;
-    iconSize = 52;
-    margin = (barHeight - iconSize) / 2;
-
-    y1 = barTop + margin;
-    y2 = y1 + iconSize;
-
-    // Primeiros 8 botões
-    for (int i = 0; i < 8; i++) {
-        x1 = margin + (i * iconSize) + (i * margin);
-        x2 = x1 + iconSize;
-        rectangle(getPoint(x1, y1), getPoint(x2, y2), iconColor, true);
-    }
-
-    // Paleta de cores
-}
-
 
 int main(int argc, char* argv[]) {
     int x, y;
@@ -518,36 +673,46 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    if (argc == 2) {
-        FILENAME_IN = argv[1];
-        FILENAME_OUT = FILENAME_IN.substr(0, FILENAME_IN.find(".bmp"));
-    }
+    image_surface = SDL_LoadBMP( FILENAME_IN.c_str() );
 
-    image = SDL_LoadBMP(FILENAME_IN.c_str());
-    
-    //TODO: CARREGAR PAINEL DE CONTROLE (IMG) AQUI!
-
-        SDL_Window * window = SDL_CreateWindow(titulo.c_str(),
-            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        SDL_Window * window_main = SDL_CreateWindow(nome_programa.c_str(),
+            SDL_WINDOWPOS_CENTERED, 180,
             800, 600, SDL_WINDOW_SHOWN
         );
 
-        window_surface = SDL_GetWindowSurface(window);
-        if (image) {
-            SDL_BlitSurface( image, NULL, window_surface, NULL );
-        }
+        // std :: string nome_painel_controle = nome_programa.c_str();
+
+        // SDL_Window * window_control_panel = SDL_CreateWindow(nome_painel_controle.append("- Painel de Controle").c_str(),
+        //     SDL_WINDOWPOS_CENTERED, 60,
+        //     800, 80, SDL_WINDOW_SHOWN
+        // );
+
+        window_surface = SDL_GetWindowSurface(window_main);
+        // control_panel_surface = SDL_GetWindowSurface(window_control_panel);
+        // SDL_BlitSurface( image_surface, NULL, control_panel_surface, NULL );
+
+        SDL_BlitSurface( image_surface, NULL, window_surface, NULL );
 
         pixels = (unsigned int *) window_surface->pixels;
         width = window_surface->w;
         height = window_surface->h;
+        blockControlPanelArea();
 
         printf("Pixel format: %s\n", SDL_GetPixelFormatName(window_surface->format->format));
         bool firstRun = true;
 
         while (true) {
-            if (firstRun && !image) {
+            if (firstRun) {
                 resetScreen();
                 firstRun = false;
+                selectedColor.hasBeenSet = false;
+
+                Point p1 = { .x = 577, .y = 537 };
+                Point p2 = { .x = 707, .y = 553 };
+
+                blockControlPanelArea(false);
+                rectangle(p1, p2, RGB(0, 0, 0));
+                blockControlPanelArea();
             }
 
         SDL_Event event;
@@ -559,7 +724,7 @@ int main(int argc, char* argv[]) {
 
             if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    window_surface = SDL_GetWindowSurface(window);
+                    window_surface = SDL_GetWindowSurface(window_main);
                     pixels = (unsigned int *) window_surface->pixels;
                     width = window_surface->w;
                     height = window_surface->h;
@@ -576,97 +741,27 @@ int main(int argc, char* argv[]) {
 
                     // CHAMADA --> FUNÇÕES DESENHO
 
-                    case SDLK_l:
-                        if (f != Function::Line) {
-                            printf("%sDesenhar Linha.\n", FUNCTION_LOG.c_str());
-                            f = Function::Line;
-                        }
-                        
-                        break;
-
-                    case SDLK_r:
-                        if (f != Function::Rectangle) {
-                            printf("%sDesenhar Retangulo.\n", FUNCTION_LOG.c_str());
-                            f = Function::Rectangle;
-                        }
-
-                        break;
-
-                    case SDLK_p:
-                        if (f != Function::Polygon) {
-                            printf("%sDesenhar Poligono.\n", FUNCTION_LOG.c_str());
-                            f = Function::Polygon;
-                        }
-
-                        break;
-
-                    case SDLK_c:
-                        if (f != Function::Circle) {
-                            printf("%sDesenhar Circulo.\n", FUNCTION_LOG.c_str());
-                            f = Function::Circle;
-                        }
-
-                        break;
-
-                    case SDLK_b:
-                        if (f != Function::Bezier) {
-                            printf("%sDesenhar Curva de Bezier.\n", FUNCTION_LOG.c_str());
-                            f = Function::Bezier;
-                        }
-
-                        break;
-
-                    case SDLK_f:
-                        if (f != Function::Bucket) {
-                            printf("%sFlood-Fill.\n", FUNCTION_LOG.c_str());
-                            f = Function::Bucket;
-                        }
-
-                        break;
+                    case SDLK_l: drawLine(); break;
+                    case SDLK_r: drawRectangle(); break;
+                    case SDLK_p: drawPolygon(); break;
+                    case SDLK_c: drawCircle(); break;
+                    case SDLK_b: drawBezier(); break;
+                    case SDLK_f: floodFill(); break;
 
                     // FIM DE CHAMADA --> FUNÇÕES DESENHO
 
                     // CHAMADA --> FUNÇÕES ROOT
 
-                    case SDLK_ESCAPE:
-                        if (f == Function::Polygon) {
-                            closePolygon();
-                            printf("%s Fechando polígono...\n", ROOT_LOG.c_str());
-                            setStatusIDLE();
-                        } else if (f != Function::None) {
-                            printf("%s Cancelando operacao...\n", ROOT_LOG.c_str());
-                            setStatusIDLE();
-                        }
-
-                        break;
-
-                    case SDLK_n:
-                        if (ctrlState) {
-                            printf("%sLimpando tela...\n", ROOT_LOG.c_str());
-                            resetScreen();
-
-                            break;
-                        }
-
-                    case SDLK_s:
-                        if (ctrlState) {
-                            printf("%sSalvando imagem...\n", ROOT_LOG.c_str());
-                            saveBMP();
-                            break;
-                        }
-
-                    case SDLK_z:
-                        if (ctrlState) {
-                            printf("%sDesfazendo alteracao...\n", ROOT_LOG.c_str());
-                            // TODO Fazer o UNDO
-
-                            break;
-                        }
+                    case SDLK_ESCAPE: cancelOperation(); break;
+                    case SDLK_n: if (ctrlState) clearScreen(); break;
+                    case SDLK_s: if (ctrlState) saveToDisk(); break;
+                    case SDLK_z: if (ctrlState) undoModification(); break;
                     
                     case SDLK_q:
                         if (ctrlState) {
                             printf("%sSaindo...\n", ROOT_LOG.c_str());
-                            SDL_DestroyWindow(window);
+                            //SDL_DestroyWindow(window_control_panel);
+                            SDL_DestroyWindow(window_main);
                             exit(0);
                         }
 
@@ -680,7 +775,18 @@ int main(int argc, char* argv[]) {
             }
 
             if (event.type == SDL_MOUSEMOTION) {
-                showMousePosition(window,event.motion.x,event.motion.y);
+                int xPosition = event.motion.x;
+                int yPosition = event.motion.y;
+
+                if (event.window.windowID == SDL_GetWindowID(window_main))
+                    showMousePosition(window_main, xPosition, yPosition);
+                // else
+                //     showMousePosition(window_control_panel, xPosition, yPosition);
+
+                if (yPosition >= 520)//&& event.window.windowID == SDL_GetWindowID(window_control_panel))
+                    flagPanel = true;
+                else
+                    flagPanel = false;
             }
 
             if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -689,13 +795,15 @@ int main(int argc, char* argv[]) {
                 
                 /*Se o botão esquerdo do mouse é pressionado. */
                 if(event.button.button == SDL_BUTTON_LEFT) {
-                    handleClick(getPoint(x, y));
+                    if (!flagPanel)
+                        handleClickSurface(getPoint(x, y));
+                    else
+                        handleClickControlPanel(getPoint(x, y));
                 }
             }
         }
 
-        // displayToolbar(); // FIXME Algo aqui tá entrando em loop sem o resetScreen.
-
-        SDL_UpdateWindowSurface(window);
+        SDL_UpdateWindowSurface(window_main);
+        //SDL_UpdateWindowSurface(window_control_panel);
     }
 }
