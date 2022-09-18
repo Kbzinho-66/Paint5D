@@ -29,9 +29,9 @@ typedef struct { int R, G, B; bool hasBeenSet; } SelectedColor;
 // Variáveis necessárias para o SDL.
 unsigned int * pixels;
 int width, height;
-SDL_Surface * window_surface;
-SDL_Surface * control_panel_surface;
-SDL_Surface * image_surface;
+SDL_Surface * windowSurface;
+SDL_Surface * controlPanelSurface;
+SDL_Surface * imageSurface;
 SDL_Renderer * renderer;
 
 // Outras variáveis.
@@ -41,7 +41,7 @@ bool flagPanel = false;
 std::vector<Point> points;
 SelectedColor selectedColor;
 
-std::string nome_programa = "Paint5D ";
+std::string programTitle = "Paint5D ";
 const int controlPanelHeight = 80;
 
 // Valores RGB para a cor de fundo da janela.
@@ -69,24 +69,6 @@ Uint32 getPixel(int x, int y) {
         return -1;
 }
 
-// Seta um pixel em uma determinada posição, através da coordenadas de cor r, g, b, e alpha (transparência)
-// r, g, b e a variam de 0 até 255.
-void setPixel(int x, int y, int r, int g, int b, int a) {
-    pixels[x + y * width] = SDL_MapRGBA(window_surface->format, r, g, b, a);
-}
-
-// Seta um pixel em uma determinada posição, através da coordenadas de cor r, g e b
-// r, g, e b variam de 0 até 255.
-void setPixel(int x, int y, int r, int g, int b) {
-    setPixel(x, y, r, g, b, 255);
-}
-
-// Seta um pixel em uma determinada posição através das coordenadas de cor r, g e b
-// r, g, e b variam de 0 até 255.
-void setPixel(Point p, int r, int g, int b) {
-    setPixel(p.x, p.y, r, g, b, 255);
-}
-
 // Seta um pixel em uma determinada posição, através de um Uint32 representando uma cor RGB.
 void setPixel(int x, int y, Uint32 color) {
     if((x<0 || x>=width || y<0 || y>=height)) {
@@ -112,7 +94,7 @@ void setPixel(Point p, Uint32 color) {
 // Mostra na barra de título da janela a posição atual do mouse.
 void showMousePosition(SDL_Window * window, int x, int y) {
     std::stringstream ss;
-    ss << nome_programa << " X: " << x << " Y: " << y;
+    ss << programTitle << " X: " << x << " Y: " << y;
     SDL_SetWindowTitle(window, ss.str().c_str());
 }
 
@@ -124,13 +106,13 @@ void printMousePosition(int x, int y) {
 // Retorna uma cor RGB(UInt32) formada pelas componentes r, g, b e a(transparência) informadas
 // r, g, b e a variam de 0 até 255.
 Uint32 RGB(int r, int g, int b, int a) {
-    return SDL_MapRGBA(window_surface->format, r, g, b, a);
+    return SDL_MapRGBA(windowSurface->format, r, g, b, a);
 }
 
 // Retorna uma cor RGB(UInt32) formada pelas componentes r, g, e b informadas
 // r, g e b variam de 0 até 255, a transparência é sempre 255 (imagem opaca).
 Uint32 RGB(int r, int g, int b) {
-    return SDL_MapRGBA(window_surface->format, r, g, b, 255);
+    return SDL_MapRGBA(windowSurface->format, r, g, b, 255);
 }
 
 // Retorna um componente de cor de uma cor RGB informada
@@ -257,7 +239,7 @@ void floodFill(Point p, Uint32 color) {
 }
 
 // Desenha uma linha de Bresenham a partir de 4 coordenadas e uma cor.
-void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
+void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 color) {
     int x,y,dx,dy,dx1,dy1,px,py,xe,ye,i;
 
     dx=x2-x1;
@@ -279,7 +261,7 @@ void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
             y=y2;
             xe=x1;
         }
-        setPixel(x,y,cor);
+        setPixel(x,y,color);
         for(i=0;x<xe;i++) {
             x=x+1;
             if(px<0) {
@@ -292,7 +274,7 @@ void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
                 }
                 px=px+2*(dy1-dx1);
             }
-            setPixel(x,y,cor);
+            setPixel(x,y,color);
         }
     } else {
         if(dy>=0) {
@@ -304,7 +286,7 @@ void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
             y=y2;
             ye=y1;
         }
-        setPixel(x,y,cor);
+        setPixel(x,y,color);
         for(i=0;y<ye;i++) {
             y=y+1;
             if(py<=0) {
@@ -317,7 +299,7 @@ void bresenhamLine(int x1, int y1, int x2, int y2, Uint32 cor) {
                 }
                 py=py+2*(dx1-dy1);
             }
-            setPixel(x,y,cor);
+            setPixel(x,y,color);
         }
     }
 }
@@ -405,7 +387,7 @@ void resetScreen() {
     }
 }
 
-// Retorna uma cor (Uint32 RGB) randômica.
+// Retorna uma cor (Uint32 RGB) aleatória.
 Uint32 getRandomColor() {
     int r, g, b;
     r = rand() % 255;
@@ -445,11 +427,11 @@ void setStatusIDLE(bool logInfo = true) {
 
 // Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
 void saveBMP() {
-    SDL_Surface * temp_surface = SDL_CreateRGBSurface(0, 800, 520, 32, 0, 0, 0, 0);
-    SDL_BlitSurface( window_surface, NULL, temp_surface, NULL );
+    SDL_Surface * tempSurface = SDL_CreateRGBSurface(0, 800, 520, 32, 0, 0, 0, 0);
+    SDL_BlitSurface( windowSurface, NULL, tempSurface, NULL );
 
     std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
-    int result = SDL_SaveBMP( temp_surface, fileName.c_str() );
+    int result = SDL_SaveBMP( tempSurface, fileName.c_str() );
 
     if ( result < 0 ) {
         printf("%sOcorreu um erro ao tentar salvar o arquivo.\n", ERROR_LOG.c_str());
@@ -457,7 +439,7 @@ void saveBMP() {
         printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), fileName.c_str());
     }
 
-    SDL_FreeSurface(temp_surface);
+    SDL_FreeSurface(tempSurface);
 }
 
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
@@ -673,47 +655,47 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    image_surface = SDL_LoadBMP( FILENAME_IN.c_str() );
+    imageSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
 
-        SDL_Window * window_main = SDL_CreateWindow(nome_programa.c_str(),
-            SDL_WINDOWPOS_CENTERED, 180,
-            800, 600, SDL_WINDOW_SHOWN
-        );
+    SDL_Window * window_main = SDL_CreateWindow(programTitle.c_str(),
+        SDL_WINDOWPOS_CENTERED, 180,
+        800, 600, SDL_WINDOW_SHOWN
+    );
 
-        // std :: string nome_painel_controle = nome_programa.c_str();
+    // std :: string nome_painel_controle = programTitle.c_str();
 
-        // SDL_Window * window_control_panel = SDL_CreateWindow(nome_painel_controle.append("- Painel de Controle").c_str(),
-        //     SDL_WINDOWPOS_CENTERED, 60,
-        //     800, 80, SDL_WINDOW_SHOWN
-        // );
+    // SDL_Window * window_control_panel = SDL_CreateWindow(nome_painel_controle.append("- Painel de Controle").c_str(),
+    //     SDL_WINDOWPOS_CENTERED, 60,
+    //     800, 80, SDL_WINDOW_SHOWN
+    // );
 
-        window_surface = SDL_GetWindowSurface(window_main);
-        // control_panel_surface = SDL_GetWindowSurface(window_control_panel);
-        // SDL_BlitSurface( image_surface, NULL, control_panel_surface, NULL );
+    windowSurface = SDL_GetWindowSurface(window_main);
+    // controlPanelSurface = SDL_GetWindowSurface(window_control_panel);
+    // SDL_BlitSurface( imageSurface, NULL, controlPanelSurface, NULL );
 
-        SDL_BlitSurface( image_surface, NULL, window_surface, NULL );
+    SDL_BlitSurface( imageSurface, NULL, windowSurface, NULL );
 
-        pixels = (unsigned int *) window_surface->pixels;
-        width = window_surface->w;
-        height = window_surface->h;
-        blockControlPanelArea();
+    pixels = (unsigned int *) windowSurface->pixels;
+    width = windowSurface->w;
+    height = windowSurface->h;
+    blockControlPanelArea();
 
-        printf("Pixel format: %s\n", SDL_GetPixelFormatName(window_surface->format->format));
-        bool firstRun = true;
+    printf("Pixel format: %s\n", SDL_GetPixelFormatName(windowSurface->format->format));
+    bool firstRun = true;
 
-        while (true) {
-            if (firstRun) {
-                resetScreen();
-                firstRun = false;
-                selectedColor.hasBeenSet = false;
+    while (true) {
+        if (firstRun) {
+            resetScreen();
+            firstRun = false;
+            selectedColor.hasBeenSet = false;
 
-                Point p1 = { .x = 577, .y = 537 };
-                Point p2 = { .x = 707, .y = 553 };
+            Point p1 = { .x = 577, .y = 537 };
+            Point p2 = { .x = 707, .y = 553 };
 
-                blockControlPanelArea(false);
-                rectangle(p1, p2, RGB(0, 0, 0));
-                blockControlPanelArea();
-            }
+            blockControlPanelArea(false);
+            rectangle(p1, p2, RGB(0, 0, 0));
+            blockControlPanelArea();
+        }
 
         SDL_Event event;
 
@@ -724,10 +706,10 @@ int main(int argc, char* argv[]) {
 
             if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    window_surface = SDL_GetWindowSurface(window_main);
-                    pixels = (unsigned int *) window_surface->pixels;
-                    width = window_surface->w;
-                    height = window_surface->h;
+                    windowSurface = SDL_GetWindowSurface(window_main);
+                    pixels = (unsigned int *) windowSurface->pixels;
+                    width = windowSurface->w;
+                    height = windowSurface->h;
                     printf("Size changed: %d, %d\n", width, height);
                 }
             }
