@@ -13,3 +13,4 @@ build/**
 Make
 .vscode/*
 main.exe
+*_?.bmp

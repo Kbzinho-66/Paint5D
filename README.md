@@ -1,8 +1,16 @@
 # Paint5D
     O próximo software de desenho a revolucionar o mercado.
 
-## ATALHOS
-    LIMPAR_TELA: CRTL + N;
-    SALVAR_IMAGEM: CRTL + S;
-    ENCERRAR_EXECUCAO: CRTL + Q;
-    INTERROMPER_COMANDO_EM_EXECUCAO: ESC;
+## Atalhos
+    - Limpar a tela: CTRL + N
+    - Salvar a imagem: CTRL + S
+    - Encerrar execução: CTRL + Q
+    - Interromper a operação em execução: ESC
+    - Desfazer última operação: CTRL + Z
+    - Operações de desenho
+        - [L]inha
+        - [R]etângulo
+        - [P]olígono
+        - [C]írculo
+        - Curva de [B]ézier
+        - [F]lood Fill
