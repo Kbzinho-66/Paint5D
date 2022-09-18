@@ -28,6 +28,7 @@ typedef struct { int R, G, B; bool hasBeenSet; } SelectedColor;
 
 // Variáveis necessárias para o SDL.
 unsigned int * pixels;
+unsigned int * previousState;
 int width, height;
 SDL_Surface * windowSurface;
 SDL_Surface * controlPanelSurface;
@@ -38,6 +39,7 @@ SDL_Renderer * renderer;
 int fileSeq = 0;
 bool ctrlState = false;
 bool flagPanel = false;
+bool hasChange = false;
 std::vector<Point> points;
 SelectedColor selectedColor;
 
@@ -417,6 +419,13 @@ inline void closePolygon() {
     bresenhamLine(points.back(), points.front(), getSelectedColor());
 }
 
+// Faz uma cópia profunda do vetor de pixels. O flag global que diz se há alguma mudança para ser desfeita
+// vai ser setado com base em newChange.
+inline void copyPixels(unsigned int *src, unsigned int *dest, bool newChange = true) {
+    memcpy(dest, src, width * height * sizeof(unsigned int));
+    hasChange = newChange;
+}
+
 // Deixa o programa em IDLE, aguardando o próximo comando por parte do usuário.
 void setStatusIDLE(bool logInfo = true) {
     points.clear();
@@ -504,9 +513,22 @@ void saveToDisk() {
     saveBMP();
 }
 void undoModification() {
+    if (!hasChange) {
+        printf("%sNenhuma alteracao a desfazer...\n", ROOT_LOG.c_str());
+        return;
+    }
+
     printf("%sDesfazendo alteracao...\n", ROOT_LOG.c_str());
-     // TODO Fazer o UNDO
+    copyPixels(previousState, pixels, false);
+
+    if (f == Function::Polygon) {
+        // O polígono precisa ser tratado como uma coisa inteira e não como as linhas que o
+        // compoem. Desfazer um polígono em construção deve, então, limpar todas as linhas 
+        // desenhadas e esvaziar o vetor de pontos.
+        setStatusIDLE();
+    }
 }
+
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
 
 // Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação.
@@ -515,6 +537,7 @@ void handleClickSurface(Point p) {
         case Function::Line:
             points.push_back(p); 
             if (points.size() == 2) {
+                copyPixels(pixels, previousState);
                 bresenhamLine(points.at(0), points.at(1), getSelectedColor());
                 setStatusIDLE();
             }
@@ -523,6 +546,7 @@ void handleClickSurface(Point p) {
         case Function::Rectangle:
             points.push_back(p);
             if (points.size() == 2) {
+                copyPixels(pixels, previousState);
                 rectangle(points.at(0), points.at(1), getSelectedColor());
                 setStatusIDLE();
             }
@@ -530,6 +554,8 @@ void handleClickSurface(Point p) {
 
         case Function::Polygon:
             if (points.empty()) {
+                // Copiar antes de começar a desenhar o polígono pra conseguir apagar todo ele.
+                copyPixels(pixels, previousState);
                 printf("%sPonto inicial do Poligono (X, Y): (%d, %d).\n", FUNCTION_ARGS_LOG.c_str(), p.x, p.y);
             }
             else {
@@ -542,6 +568,7 @@ void handleClickSurface(Point p) {
             points.push_back(p);
             if (points.size() == 2) {
                 int radius = euclideanDistance(points.at(0), points.at(1));
+                copyPixels(pixels, previousState);
                 bresenhamCircle(points.at(0), radius, getSelectedColor());
                 setStatusIDLE();
             }
@@ -550,12 +577,14 @@ void handleClickSurface(Point p) {
         case Function::Bezier:
             points.push_back(p); 
             if (points.size() == 4) {
+                copyPixels(pixels, previousState);
                 bezierCurve(points, getSelectedColor());
                 setStatusIDLE();
             }
             break;
 
         case Function::Bucket: 
+            copyPixels(pixels, previousState);
             floodFill(p, getSelectedColor());
             setStatusIDLE();
             break;
@@ -680,12 +709,16 @@ int main(int argc, char* argv[]) {
     height = windowSurface->h;
     blockControlPanelArea();
 
+    previousState = (unsigned int *) malloc(width * height * sizeof(unsigned int));
+
     printf("Pixel format: %s\n", SDL_GetPixelFormatName(windowSurface->format->format));
     bool firstRun = true;
 
     while (true) {
         if (firstRun) {
             resetScreen();
+            copyPixels(pixels, previousState); // Copiar depois de inicializar a tela pra não desfazer isso
+
             firstRun = false;
             selectedColor.hasBeenSet = false;
 
