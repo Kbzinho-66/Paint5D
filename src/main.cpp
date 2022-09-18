@@ -10,8 +10,8 @@
 #include <vector>
 
 // Nome dos arquivos a serem utilizados / gerados pelo programa.
-std::string FILENAME_IN ="painel_controle_final.png";
-std::string FILENAME_OUT ="wonderful.bmp";
+std::string FILENAME_IN, FILENAME_OUT;
+int fileSeq = 0;
 
 // LOGS de saída do programa.
 std::string ROOT_LOG = "\033[1;33mROOT: \033[0m";
@@ -27,7 +27,7 @@ typedef struct {int x, y;} Point;
 unsigned int * pixels;
 int width, height;
 SDL_Surface * window_surface;
-SDL_Surface * imagem;
+SDL_Surface * image;
 SDL_Renderer * renderer;
 bool ctrlState = false;
 std::vector<Point> points;
@@ -427,16 +427,12 @@ void handleClick(Point p) {
             break;
 
         case Function::Polygon:
-            points.push_back(p);
-            if (points.size() == 1) {
+            if (points.empty()) {
                 printf("%sPonto inicial do Poligono (X, Y): (%d, %d).\n", FUNCTION_ARGS_LOG.c_str(), p.x, p.y);
+            } else {
+                bresenhamLine(points.back(), p, getRandomColor());
             }
-            if (points.size() >= 2) {
-                bresenhamLine(points.at(points.size() - 2), points.at(points.size() - 1), getRandomColor());
-            }
-            if (points.size() > 2 && (p.x == points.at(0).x && p.y == points.at(0).y)) {
-                setStatusIDLE();
-            }
+            points.push_back(p);
             break;
 
         case Function::Circle:
@@ -469,13 +465,19 @@ void handleClick(Point p) {
 
 // Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
 void saveBMP() {
-    int result = SDL_SaveBMP( window_surface, FILENAME_OUT.c_str() );
+    std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
+    int result = SDL_SaveBMP( window_surface, fileName.c_str() );
 
     if ( result < 0 ) {
         printf("%sOcorreu um erro ao tentar salvar o arquivo.\n", ERROR_LOG.c_str());
     } else {
-        printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), FILENAME_OUT.c_str());
+        printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), fileName.c_str());
     }
+}
+
+// Só conecta o último ponto do vetor de pontos ao primeiro quando a operação de desenhar Polígonos é encerrada.
+inline void closePolygon() {
+    bresenhamLine(points.back(), points.front(), getRandomColor());
 }
 
 // Monta a barra com todas as opções de desenho.
@@ -516,8 +518,13 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    imagem = SDL_LoadBMP( FILENAME_IN.c_str() );
+    if (argc == 2) {
+        FILENAME_IN = argv[1];
+        FILENAME_OUT = FILENAME_IN.substr(0, FILENAME_IN.find(".bmp"));
+    }
 
+    image = SDL_LoadBMP(FILENAME_IN.c_str());
+    
     //TODO: CARREGAR PAINEL DE CONTROLE (IMG) AQUI!
 
         SDL_Window * window = SDL_CreateWindow(titulo.c_str(),
@@ -526,6 +533,9 @@ int main(int argc, char* argv[]) {
         );
 
         window_surface = SDL_GetWindowSurface(window);
+        if (image) {
+            SDL_BlitSurface( image, NULL, window_surface, NULL );
+        }
 
         pixels = (unsigned int *) window_surface->pixels;
         width = window_surface->w;
@@ -535,7 +545,7 @@ int main(int argc, char* argv[]) {
         bool firstRun = true;
 
         while (true) {
-            if (firstRun) {
+            if (firstRun && !image) {
                 resetScreen();
                 firstRun = false;
             }
@@ -619,7 +629,11 @@ int main(int argc, char* argv[]) {
                     // CHAMADA --> FUNÇÕES ROOT
 
                     case SDLK_ESCAPE:
-                        if (f != Function::None) {
+                        if (f == Function::Polygon) {
+                            closePolygon();
+                            printf("%s Fechando polígono...\n", ROOT_LOG.c_str());
+                            setStatusIDLE();
+                        } else if (f != Function::None) {
                             printf("%s Cancelando operacao...\n", ROOT_LOG.c_str());
                             setStatusIDLE();
                         }
