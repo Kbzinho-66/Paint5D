@@ -8,10 +8,14 @@
 #include <unistd.h>
 #include <time.h>
 #include <vector>
+#include <cstring>
+
 
 // Nome dos arquivos a serem utilizados / gerados pelo programa.
-std::string FILENAME_IN ="painel_controle_filled_final.bmp";
+std::string FILENAME_CONTROL_PANEL_FILLED ="themes\\painel_controle\\runtime\\painel_controle_filled_final.bmp";
+std::string FILENAME_CONTROL_PANEL_STD ="themes\\painel_controle\\runtime\\painel_controle_std_final.bmp";
 std::string FILENAME_OUT ="wonderful";
+std::string FILENAME_IN ="";
 
 // LOGS de saída do programa.
 std::string ROOT_LOG = "\033[1;33mROOT: \033[0m";
@@ -30,21 +34,29 @@ typedef struct { int R, G, B; bool hasBeenSet; } SelectedColor;
 unsigned int * pixels;
 unsigned int * previousState;
 int width, height;
-SDL_Surface * windowSurface;
-SDL_Surface * controlPanelSurface;
-SDL_Surface * imageSurface;
+
 SDL_Renderer * renderer;
+SDL_Surface * windowMainSurface;
+SDL_Surface * controlPanelSurface;
+SDL_Surface * controlPanelImageSurface;
+SDL_Surface * imageInSurface;
+SDL_Window * window_main;
+SDL_Window * window_control_panel;
 
 // Outras variáveis.
 int fileSeq = 0;
 bool ctrlState = false;
-bool flagPanel = false;
+bool isOnControlPanelArea = false;
 bool hasChange = false;
+bool controlPanelAsWindow = false;
 std::vector<Point> points;
 SelectedColor selectedColor;
 
-std::string programTitle = "Paint5D ";
+std::string programMainTitle = "Paint5D ";
+std::string programControlPanelTitle = "Paint5D - Painel de Controle ";
+
 const int controlPanelHeight = 80;
+const int controlPanelWindowHeightDifference = 522;
 
 // Valores RGB para a cor de fundo da janela.
 const int VERMELHO = 255;
@@ -94,9 +106,9 @@ void setPixel(Point p, Uint32 color) {
 }
 
 // Mostra na barra de título da janela a posição atual do mouse.
-void showMousePosition(SDL_Window * window, int x, int y) {
+void showMousePosition(SDL_Window * window, int x, int y, std::string titleToBeShown = "") {
     std::stringstream ss;
-    ss << programTitle << " X: " << x << " Y: " << y;
+    ss << (titleToBeShown != "" ? titleToBeShown : programMainTitle) << " X: " << x << " Y: " << y;
     SDL_SetWindowTitle(window, ss.str().c_str());
 }
 
@@ -108,13 +120,13 @@ void printMousePosition(int x, int y) {
 // Retorna uma cor RGB(UInt32) formada pelas componentes r, g, b e a(transparência) informadas
 // r, g, b e a variam de 0 até 255.
 Uint32 RGB(int r, int g, int b, int a) {
-    return SDL_MapRGBA(windowSurface->format, r, g, b, a);
+    return SDL_MapRGBA(windowMainSurface->format, r, g, b, a);
 }
 
 // Retorna uma cor RGB(UInt32) formada pelas componentes r, g, e b informadas
 // r, g e b variam de 0 até 255, a transparência é sempre 255 (imagem opaca).
 Uint32 RGB(int r, int g, int b) {
-    return SDL_MapRGBA(windowSurface->format, r, g, b, 255);
+    return SDL_MapRGBA(windowMainSurface->format, r, g, b, 255);
 }
 
 // Retorna um componente de cor de uma cor RGB informada
@@ -377,16 +389,20 @@ void bezierCurve(std::vector<Point> p, Uint32 color) {
 
 // "Bloqueia" a área do Painel de Controle para evitar que seja alterada pelas funções de desenho.
 void blockControlPanelArea(bool block = true) {
-    block ? height -= controlPanelHeight : height += controlPanelHeight;
+    if (!controlPanelAsWindow)
+        block ? height -= controlPanelHeight : height += controlPanelHeight;
 }
 
 // Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL.
 void resetScreen() {
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
+    if (!controlPanelAsWindow)
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
+            }
         }
-    }
+    else
+        SDL_BlitSurface(imageInSurface, NULL, windowMainSurface, NULL);
 }
 
 // Retorna uma cor (Uint32 RGB) aleatória.
@@ -407,11 +423,37 @@ Uint32 getSelectedColor() {
         return getRandomColor();
 }
 
+void setSelectedColorAtViewer(Uint32 color) {
+    if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
+    int x = 644;
+    int y = 546 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0);
+    blockControlPanelArea(false);
+    floodFill(x, y, color);
+    blockControlPanelArea();
+    pixels = (unsigned int *) windowMainSurface->pixels;
+}
+
 void setSelectedColor(int r, int g, int b) {
     selectedColor = { .R = r, .G = g, .B = b, .hasBeenSet = true};
+    setSelectedColorAtViewer(RGB(r, g, b));
+}
+
+void setSelectedColor(Uint32 color) {
+    SDL_Color RGB;
+    SDL_GetRGB(color, windowMainSurface->format, &RGB.r, &RGB.g, &RGB.b);
+    selectedColor = { .R = RGB.r, .G = RGB.g, .B = RGB.b, .hasBeenSet = true};
+    setSelectedColorAtViewer(color);
+}
+
+void drawSelectedColorViewer() {
+    if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
+    Point p1 = { .x = 577, .y = 537 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
+    Point p2 = { .x = 707, .y = 553 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
+
     blockControlPanelArea(false);
-    floodFill(644, 546, RGB(r, g, b));
+    rectangle(p1, p2, RGB(0, 0, 0));
     blockControlPanelArea();
+    pixels = (unsigned int *) windowMainSurface->pixels;
 }
 
 // Conecta o último ponto do vetor de pontos ao primeiro caso a operação de desenhar Polígonos for encerrada.
@@ -437,7 +479,7 @@ void setStatusIDLE(bool logInfo = true) {
 // Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
 void saveBMP() {
     SDL_Surface * tempSurface = SDL_CreateRGBSurface(0, 800, 520, 32, 0, 0, 0, 0);
-    SDL_BlitSurface( windowSurface, NULL, tempSurface, NULL );
+    SDL_BlitSurface( windowMainSurface, NULL, tempSurface, NULL );
 
     std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
     int result = SDL_SaveBMP( tempSurface, fileName.c_str() );
@@ -514,7 +556,7 @@ void saveToDisk() {
 }
 void undoModification() {
     if (!hasChange) {
-        printf("%sNenhuma alteracao a desfazer...\n", ROOT_LOG.c_str());
+        printf("%sNenhuma alteracao a ser desfeita...\n", ROOT_LOG.c_str());
         return;
     }
 
@@ -527,6 +569,14 @@ void undoModification() {
         // desenhadas e esvaziar o vetor de pontos.
         setStatusIDLE();
     }
+}
+void closeApplication() {
+    printf("%sSaindo... Ate breve!\n", ROOT_LOG.c_str());
+    if (controlPanelAsWindow)
+        SDL_DestroyWindow(window_control_panel);
+
+    SDL_DestroyWindow(window_main);
+    exit(0);
 }
 
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
@@ -597,6 +647,7 @@ void handleClickSurface(Point p) {
 
 // Recebe o ponto em que o usuário clicou e seleciona a função de acordo com a posição.
 void handleClickControlPanel(Point p) {
+    if (controlPanelAsWindow) p.y += controlPanelWindowHeightDifference;
     if (534 <= p.y && p.y <= 588 && (p.x <= 564 || p.x >= 720)) {
         // FUNÇÕES
         if (18 <= p.x && p.x <= 72)
@@ -684,65 +735,74 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO);
 
-    imageSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
-
-    SDL_Window * window_main = SDL_CreateWindow(programTitle.c_str(),
+    window_main = SDL_CreateWindow(programMainTitle.c_str(),
         SDL_WINDOWPOS_CENTERED, 180,
         800, 600, SDL_WINDOW_SHOWN
     );
 
-    // std :: string nome_painel_controle = programTitle.c_str();
+    if (argc == 2) {
+        std::string firstArg = argv[1];
+        if (firstArg.find(".bmp") != std::string::npos) {
+            FILENAME_IN = firstArg;
+            FILENAME_OUT = FILENAME_IN.substr(0, FILENAME_IN.find(".bmp"));
+        }
+    }
 
-    // SDL_Window * window_control_panel = SDL_CreateWindow(nome_painel_controle.append("- Painel de Controle").c_str(),
-    //     SDL_WINDOWPOS_CENTERED, 60,
-    //     800, 80, SDL_WINDOW_SHOWN
-    // );
+    if (FILENAME_IN.length() > 0) {
+        controlPanelAsWindow = true;
+        imageInSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
+    }
+    else {
+        imageInSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_FILLED.c_str() );
+    }
 
-    windowSurface = SDL_GetWindowSurface(window_main);
-    // controlPanelSurface = SDL_GetWindowSurface(window_control_panel);
-    // SDL_BlitSurface( imageSurface, NULL, controlPanelSurface, NULL );
+    windowMainSurface = SDL_GetWindowSurface(window_main);
+    SDL_BlitSurface( imageInSurface, NULL, windowMainSurface, NULL );
 
-    SDL_BlitSurface( imageSurface, NULL, windowSurface, NULL );
+    if (controlPanelAsWindow) {
+        window_control_panel = SDL_CreateWindow(programControlPanelTitle.c_str(),
+            SDL_WINDOWPOS_CENTERED, 60,
+            800, 78, SDL_WINDOW_SHOWN
+        );
+        controlPanelImageSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_STD.c_str() );
+        controlPanelSurface = SDL_GetWindowSurface(window_control_panel);
+        SDL_BlitSurface( controlPanelImageSurface, NULL, controlPanelSurface, NULL );
+    }
 
-    pixels = (unsigned int *) windowSurface->pixels;
-    width = windowSurface->w;
-    height = windowSurface->h;
+    pixels = (unsigned int *) windowMainSurface->pixels;
+    width = windowMainSurface->w;
+    height = windowMainSurface->h;
     blockControlPanelArea();
 
     previousState = (unsigned int *) malloc(width * height * sizeof(unsigned int));
 
-    printf("Pixel format: %s\n", SDL_GetPixelFormatName(windowSurface->format->format));
+    printf("Pixel format: %s\n", SDL_GetPixelFormatName(windowMainSurface->format->format));
     bool firstRun = true;
 
     while (true) {
         if (firstRun) {
             resetScreen();
-            copyPixels(pixels, previousState); // Copiar depois de inicializar a tela pra não desfazer isso
+            copyPixels(pixels, previousState);
 
             firstRun = false;
             selectedColor.hasBeenSet = false;
 
-            Point p1 = { .x = 577, .y = 537 };
-            Point p2 = { .x = 707, .y = 553 };
-
-            blockControlPanelArea(false);
-            rectangle(p1, p2, RGB(0, 0, 0));
-            blockControlPanelArea();
+            drawSelectedColorViewer();
         }
 
         SDL_Event event;
 
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
-                exit(0);
+                closeApplication();
             }
 
             if (event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    windowSurface = SDL_GetWindowSurface(window_main);
-                    pixels = (unsigned int *) windowSurface->pixels;
-                    width = windowSurface->w;
-                    height = windowSurface->h;
+                    windowMainSurface = SDL_GetWindowSurface(window_main);
+                    pixels = (unsigned int *) windowMainSurface->pixels;
+                    width = windowMainSurface->w;
+                    height = windowMainSurface->h;
                     printf("Size changed: %d, %d\n", width, height);
                 }
             }
@@ -756,29 +816,22 @@ int main(int argc, char* argv[]) {
 
                     // CHAMADA --> FUNÇÕES DESENHO
 
-                    case SDLK_l: drawLine(); break;
                     case SDLK_r: drawRectangle(); break;
                     case SDLK_p: drawPolygon(); break;
-                    case SDLK_c: drawCircle(); break;
                     case SDLK_b: drawBezier(); break;
                     case SDLK_f: floodFill(); break;
+                    case SDLK_l: drawLine(); break;
+                    case SDLK_c: if (ctrlState) closeApplication(); else drawCircle(); break;
 
                     // FIM DE CHAMADA --> FUNÇÕES DESENHO
 
                     // CHAMADA --> FUNÇÕES ROOT
 
                     case SDLK_ESCAPE: cancelOperation(); break;
-                    case SDLK_n: if (ctrlState) clearScreen(); break;
                     case SDLK_s: if (ctrlState) saveToDisk(); break;
+                    case SDLK_n: if (ctrlState) clearScreen(); break;
                     case SDLK_z: if (ctrlState) undoModification(); break;
-                    
-                    case SDLK_q:
-                        if (ctrlState) {
-                            printf("%sSaindo...\n", ROOT_LOG.c_str());
-                            //SDL_DestroyWindow(window_control_panel);
-                            SDL_DestroyWindow(window_main);
-                            exit(0);
-                        }
+                    case SDLK_q: if (ctrlState) closeApplication(); break;
 
                     // FIM DE CHAMADA --> FUNÇÕES ROOT
 
@@ -793,15 +846,19 @@ int main(int argc, char* argv[]) {
                 int xPosition = event.motion.x;
                 int yPosition = event.motion.y;
 
-                if (event.window.windowID == SDL_GetWindowID(window_main))
+                if (event.window.windowID == SDL_GetWindowID(window_main)) {
                     showMousePosition(window_main, xPosition, yPosition);
-                // else
-                //     showMousePosition(window_control_panel, xPosition, yPosition);
+                    SDL_RaiseWindow(window_main);
+                }
+                else if (controlPanelAsWindow) {
+                    showMousePosition(window_control_panel, xPosition, yPosition, programControlPanelTitle.c_str());
+                    SDL_RaiseWindow(window_control_panel);
+                }
 
-                if (yPosition >= 520)//&& event.window.windowID == SDL_GetWindowID(window_control_panel))
-                    flagPanel = true;
+                if (yPosition >= 520 && !controlPanelAsWindow)
+                    isOnControlPanelArea = true;
                 else
-                    flagPanel = false;
+                    isOnControlPanelArea = false;
             }
 
             if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -810,7 +867,7 @@ int main(int argc, char* argv[]) {
                 
                 /*Se o botão esquerdo do mouse é pressionado. */
                 if(event.button.button == SDL_BUTTON_LEFT) {
-                    if (!flagPanel)
+                    if (!isOnControlPanelArea && event.window.windowID == SDL_GetWindowID(window_main))
                         handleClickSurface(getPoint(x, y));
                     else
                         handleClickControlPanel(getPoint(x, y));
@@ -819,6 +876,6 @@ int main(int argc, char* argv[]) {
         }
 
         SDL_UpdateWindowSurface(window_main);
-        //SDL_UpdateWindowSurface(window_control_panel);
+        SDL_UpdateWindowSurface(window_control_panel);
     }
 }
