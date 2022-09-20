@@ -10,12 +10,17 @@
 #include <vector>
 #include <cstring>
 
-
 // Nome dos arquivos a serem utilizados / gerados pelo programa.
-std::string FILENAME_CONTROL_PANEL_FILLED ="themes\\painel_controle\\runtime\\painel_controle_filled_final.bmp";
-std::string FILENAME_CONTROL_PANEL_STD ="themes\\painel_controle\\runtime\\painel_controle_std_final.bmp";
-std::string FILENAME_OUT ="wonderful";
-std::string FILENAME_IN ="";
+#if _WIN32
+    std::string FILENAME_CONTROL_PANEL_FILLED = "themes\\painel_controle\\runtime\\painel_controle_filled_final.bmp";
+    std::string FILENAME_CONTROL_PANEL_STD = "themes\\painel_controle\\runtime\\painel_controle_std_final.bmp";
+#elif __linux__
+    std::string FILENAME_CONTROL_PANEL_FILLED = "themes/painel_controle/runtime/painel_controle_filled_final.bmp";
+    std::string FILENAME_CONTROL_PANEL_STD = "themes/painel_controle/runtime/painel_controle_std_final.bmp";
+#endif
+
+std::string FILENAME_IN = "";
+std::string FILENAME_OUT = "desenho";
 
 // LOGS de saída do programa.
 std::string ROOT_LOG = "\033[1;33mROOT: \033[0m";
@@ -331,7 +336,9 @@ void rectangle(int x1, int y1, int x2, int y2, Uint32 color, bool fill = false) 
     bresenhamLine(x2, y1, x2, y2, color);
 
     if (fill) {
-        floodFill(x1 + 1, y1 + 1, color);
+        for (int y = y1; y < y2; y++) {
+            bresenhamLine(x1, y, x2, y, color);
+        }
     }
 }
 
@@ -395,24 +402,15 @@ void blockControlPanelArea(bool block = true) {
 
 // Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL.
 void resetScreen() {
-    if (!controlPanelAsWindow)
+    if (!controlPanelAsWindow) {
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
                 setPixel(x, y, RGB(VERMELHO,VERDE,AZUL));
             }
         }
-    else
+    } else {
         SDL_BlitSurface(imageInSurface, NULL, windowMainSurface, NULL);
-}
-
-// Retorna uma cor (Uint32 RGB) aleatória.
-Uint32 getRandomColor() {
-    int r, g, b;
-    r = rand() % 255;
-    g = rand() % 255;
-    b = rand() % 255;
-
-    return RGB(r, g, b);
+    }
 }
 
 // Retorna a cor (Uint32 RGB) selecionada pelo usuário, caso haja alguma.
@@ -420,15 +418,15 @@ Uint32 getSelectedColor() {
     if (selectedColor.hasBeenSet)
         return RGB(selectedColor.R, selectedColor.G, selectedColor.B);
     else
-        return getRandomColor();
+        return RGB(0, 0, 0);
 }
 
 void setSelectedColorAtViewer(Uint32 color) {
     if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
-    int x = 644;
-    int y = 546 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0);
+    int x = 579;
+    int y = 539 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 1);
     blockControlPanelArea(false);
-    floodFill(x, y, color);
+    rectangle(x, y, x + 126, y + 13, color, true);
     blockControlPanelArea();
     pixels = (unsigned int *) windowMainSurface->pixels;
 }
@@ -494,6 +492,7 @@ void saveBMP() {
 }
 
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
+// TODO Marcar a opção selecionada
 void drawLine() {
     if (f != Function::Line) {
         setStatusIDLE(false);
@@ -748,12 +747,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (FILENAME_IN.length() > 0) {
-        controlPanelAsWindow = true;
-        imageInSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
-    }
-    else {
+    if (FILENAME_IN.empty()) {
         imageInSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_FILLED.c_str() );
+    } else {
+        imageInSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
+
+        if (imageInSurface) {
+            controlPanelAsWindow = true;
+        } else {
+            printf("%sOcorreu um erro ao tentar abrir a imagem %s.\n", ERROR_LOG.c_str(), FILENAME_IN.c_str());
+            imageInSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_FILLED.c_str() );
+        }
     }
 
     windowMainSurface = SDL_GetWindowSurface(window_main);
@@ -776,8 +780,8 @@ int main(int argc, char* argv[]) {
 
     previousState = (unsigned int *) malloc(width * height * sizeof(unsigned int));
 
-    printf("Pixel format: %s\n", SDL_GetPixelFormatName(windowMainSurface->format->format));
     bool firstRun = true;
+    printf("%sPrograma iniciado, aguardando um comando...\n", ROOT_LOG.c_str());
 
     while (true) {
         if (firstRun) {
