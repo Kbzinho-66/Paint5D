@@ -36,9 +36,10 @@ typedef struct { int x, y; } Point;
 typedef struct { int R, G, B; bool hasBeenSet; } SelectedColor;
 
 // Variáveis necessárias para o SDL.
+int width, height;
 unsigned int * pixels;
 unsigned int * previousState;
-int width, height;
+unsigned int * backupMainSurfaceState;
 
 SDL_Renderer * renderer;
 SDL_Surface * windowMainSurface;
@@ -51,8 +52,9 @@ SDL_Window * window_control_panel;
 // Outras variáveis.
 int fileSeq = 0;
 bool ctrlState = false;
-bool isOnControlPanelArea = false;
 bool hasChange = false;
+bool hasStartedPolygon = false;
+bool isOnControlPanelArea = false;
 bool controlPanelAsWindow = false;
 std::vector<Point> points;
 SelectedColor selectedColor;
@@ -61,7 +63,7 @@ std::string programMainTitle = "Paint5D ";
 std::string programControlPanelTitle = "Paint5D - Painel de Controle ";
 
 const int controlPanelHeight = 80;
-const int controlPanelWindowHeightDifference = 522;
+const int controlPanelWindowHeightDifference = 520;
 
 // Valores RGB para a cor de fundo da janela.
 const int VERMELHO = 255;
@@ -136,7 +138,7 @@ Uint32 RGB(int r, int g, int b) {
 
 // Retorna um componente de cor de uma cor RGB informada
 // aceita os parâmetros 'r', 'R','g', 'G','b' e 'B'.
-Uint8 getColorComponent( Uint32 pixel, char component ) {
+Uint8 getColorComponent(Uint32 pixel, char component) {
     Uint32 mask;
 
     switch(component) {
@@ -400,6 +402,30 @@ void blockControlPanelArea(bool block = true) {
         block ? height -= controlPanelHeight : height += controlPanelHeight;
 }
 
+// Faz uma cópia profunda do vetor de pixels. 
+// O flag global que diz se há alguma mudança para ser desfeita vai ser setado com base em newChange.
+inline void copyPixels(unsigned int *src, unsigned int *dest, bool newChange = true) {
+    memcpy(dest, src, width * height * sizeof(unsigned int));
+    hasChange = newChange;
+}
+
+// Faz uma cópia profunda do vetor de pixels. 
+// Apenas para uso na estrutura de seleção de função.
+inline void copyPixelsForFunctionSelection(unsigned int *src, unsigned int *dest) {
+    memcpy(dest, src, width * height * sizeof(unsigned int));
+}
+
+void setSelectedColorAtViewer(Uint32 color) {
+    if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
+    int x = 579;
+    int y = 539 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 1);
+
+    blockControlPanelArea(false);
+    rectangle(x, y, x + 126, y + 13, color, true);
+    blockControlPanelArea();
+    pixels = (unsigned int *) windowMainSurface->pixels;
+}
+
 // Limpa a tela de volta para as constantes definidas em VERMELHO, VERDE e AZUL.
 void resetScreen() {
     if (!controlPanelAsWindow) {
@@ -431,14 +457,35 @@ Uint32 getSelectedColor() {
         return getRandomColor();
 }
 
-void setSelectedColorAtViewer(Uint32 color) {
+inline void clearSelectedFunctionViewer() {
+    if (controlPanelAsWindow) {
+        SDL_BlitSurface(controlPanelImageSurface, NULL, controlPanelSurface, NULL);
+    }
+    else {
+        copyPixelsForFunctionSelection(pixels, backupMainSurfaceState);
+        SDL_BlitSurface(imageInSurface, NULL, windowMainSurface, NULL);
+        copyPixelsForFunctionSelection(backupMainSurfaceState, pixels);
+    }
+
+    if (selectedColor.hasBeenSet)
+        setSelectedColorAtViewer(RGB(selectedColor.R, selectedColor.G, selectedColor.B));
+}
+
+void drawSelectedFunctionViewer(int x, int y) {
+    clearSelectedFunctionViewer();
+    
     if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
-    int x = 579;
-    int y = 539 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 1);
+    
+    Point p1 = { .x = x, .y = y - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
+    Point p2 = { .x = x + 52, .y = y + 52 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
+
     blockControlPanelArea(false);
-    rectangle(x, y, x + 126, y + 13, color, true);
+    rectangle(p1, p2, RGB(0, 0, 0));
     blockControlPanelArea();
     pixels = (unsigned int *) windowMainSurface->pixels;
+    
+    if (!controlPanelAsWindow)
+        copyPixelsForFunctionSelection(backupMainSurfaceState, pixels);
 }
 
 void setSelectedColor(int r, int g, int b) {
@@ -453,33 +500,18 @@ void setSelectedColor(Uint32 color) {
     setSelectedColorAtViewer(color);
 }
 
-void drawSelectedColorViewer() {
-    if (controlPanelAsWindow) pixels = (unsigned int *) controlPanelSurface->pixels;
-    Point p1 = { .x = 577, .y = 537 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
-    Point p2 = { .x = 707, .y = 553 - (controlPanelAsWindow ? controlPanelWindowHeightDifference : 0)};
-
-    blockControlPanelArea(false);
-    rectangle(p1, p2, RGB(0, 0, 0));
-    blockControlPanelArea();
-    pixels = (unsigned int *) windowMainSurface->pixels;
-}
-
 // Conecta o último ponto do vetor de pontos ao primeiro caso a operação de desenhar Polígonos for encerrada.
 inline void closePolygon() {
     bresenhamLine(points.back(), points.front(), getSelectedColor());
 }
 
-// Faz uma cópia profunda do vetor de pixels. O flag global que diz se há alguma mudança para ser desfeita
-// vai ser setado com base em newChange.
-inline void copyPixels(unsigned int *src, unsigned int *dest, bool newChange = true) {
-    memcpy(dest, src, width * height * sizeof(unsigned int));
-    hasChange = newChange;
-}
-
 // Deixa o programa em IDLE, aguardando o próximo comando por parte do usuário.
-void setStatusIDLE(bool logInfo = true) {
+void setStatusIDLE(bool logInfo = true, bool clearSelectedFunction = true) {
     points.clear();
     f = Function::None;
+
+    if (clearSelectedFunction)
+        clearSelectedFunctionViewer();
     if (logInfo)
         printf("%sAguardando comando...\n", RUNTIME_LOG.c_str());
 }
@@ -488,12 +520,12 @@ void setStatusIDLE(bool logInfo = true) {
 void saveBMP() {
     int xTempSurface = 800, yTempSurface = controlPanelAsWindow ? 600 : 520;
     SDL_Surface * tempSurface = SDL_CreateRGBSurface(0, xTempSurface, yTempSurface, 32, 0, 0, 0, 0);
-    SDL_BlitSurface( windowMainSurface, NULL, tempSurface, NULL );
+    SDL_BlitSurface(windowMainSurface, NULL, tempSurface, NULL);
 
     std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
-    int result = SDL_SaveBMP( tempSurface, fileName.c_str() );
+    int result = SDL_SaveBMP(tempSurface, fileName.c_str());
 
-    if ( result < 0 ) {
+    if (result < 0) {
         printf("%sOcorreu um erro ao tentar salvar o arquivo.\n", ERROR_LOG.c_str());
     } else {
         printf("%sArquivo salvo com sucesso! Nome do arquivo: '%s'.\n", ROOT_LOG.c_str(), fileName.c_str());
@@ -505,45 +537,70 @@ void saveBMP() {
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
 // TODO Marcar a opção selecionada
 void drawLine() {
+    drawSelectedFunctionViewer(158, 535);
     if (f != Function::Line) {
-        setStatusIDLE(false);
+        setStatusIDLE(false, false);
         printf("%sDesenhar Linha.\n", FUNCTION_LOG.c_str());
         f = Function::Line;
     }
+    else {
+        setStatusIDLE();
+    }
 }
 void drawRectangle() {
+    drawSelectedFunctionViewer(227, 535);
     if (f != Function::Rectangle) {
-        setStatusIDLE(false);
+        setStatusIDLE(false, false);
         printf("%sDesenhar Retangulo.\n", FUNCTION_LOG.c_str());
         f = Function::Rectangle;
     }
+    else {
+        setStatusIDLE();
+    }
 }
 void drawPolygon() {
+    drawSelectedFunctionViewer(296, 535);
     if (f != Function::Polygon) {
-        setStatusIDLE(false);
+        hasStartedPolygon = false;
+        setStatusIDLE(false, false);
 		printf("%sDesenhar Poligono.\n", FUNCTION_LOG.c_str());
 		f = Function::Polygon;
 	}
+    else {
+        setStatusIDLE();
+    }
 }
 void drawCircle() {
+    drawSelectedFunctionViewer(365, 535);
     if (f != Function::Circle) {
-        setStatusIDLE(false);
+        setStatusIDLE(false, false);
 		printf("%sDesenhar Circulo.\n", FUNCTION_LOG.c_str());
 		f = Function::Circle;
 	}
+    else {
+        setStatusIDLE();
+    }
 }
 void drawBezier() {
+    drawSelectedFunctionViewer(434, 535);
     if (f != Function::Bezier) {
-        setStatusIDLE(false);
+        setStatusIDLE(false, false);
 		printf("%sDesenhar Curva de Bezier.\n", FUNCTION_LOG.c_str());
 		f = Function::Bezier;
 	}
+    else {
+        setStatusIDLE();
+    }
 }
 void floodFill() {
+    drawSelectedFunctionViewer(504, 535);
     if (f != Function::Bucket) {
 		printf("%sFlood-Fill.\n", FUNCTION_LOG.c_str());
 		f = Function::Bucket;
 	}
+    else {
+        setStatusIDLE();
+    }
 }
 
 void clearScreen() {
@@ -552,10 +609,10 @@ void clearScreen() {
 }
 void cancelOperation() {
     if (f != Function::None) {
-        printf("%s Cancelando operacao...\n", ROOT_LOG.c_str());
-        if (f == Function::Polygon) {
+        printf("%sCancelando operacao...\n", ROOT_LOG.c_str());
+        if (f == Function::Polygon && hasStartedPolygon) {
             closePolygon();
-            printf("%s Fechando poligono...\n", ROOT_LOG.c_str());
+            printf("%sFechando poligono...\n", ROOT_LOG.c_str());
         }
         setStatusIDLE();
     }
@@ -593,6 +650,7 @@ void closeApplication() {
 
 // Recebe o ponto em que o usuário clicou e trata de acordo com o tipo de operação.
 void handleClickSurface(Point p) {
+    copyPixelsForFunctionSelection(pixels, backupMainSurfaceState);
     switch (f) {
         case Function::Line:
             points.push_back(p); 
@@ -614,6 +672,7 @@ void handleClickSurface(Point p) {
 
         case Function::Polygon:
             if (points.empty()) {
+                hasStartedPolygon = true;
                 // Copiar antes de começar a desenhar o polígono pra conseguir apagar todo ele.
                 copyPixels(pixels, previousState);
                 printf("%sPonto inicial do Poligono (X, Y): (%d, %d).\n", FUNCTION_ARGS_LOG.c_str(), p.x, p.y);
@@ -759,29 +818,29 @@ int main(int argc, char* argv[]) {
     }
 
     if (FILENAME_IN.empty()) {
-        imageInSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_FILLED.c_str() );
+        imageInSurface = SDL_LoadBMP(FILENAME_CONTROL_PANEL_FILLED.c_str());
     } else {
-        imageInSurface = SDL_LoadBMP( FILENAME_IN.c_str() );
+        imageInSurface = SDL_LoadBMP(FILENAME_IN.c_str());
 
         if (imageInSurface) {
             controlPanelAsWindow = true;
         } else {
             printf("%sOcorreu um erro ao tentar abrir a imagem %s.\n", ERROR_LOG.c_str(), FILENAME_IN.c_str());
-            imageInSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_FILLED.c_str() );
+            imageInSurface = SDL_LoadBMP(FILENAME_CONTROL_PANEL_FILLED.c_str());
         }
     }
 
     windowMainSurface = SDL_GetWindowSurface(window_main);
-    SDL_BlitSurface( imageInSurface, NULL, windowMainSurface, NULL );
+    SDL_BlitSurface(imageInSurface, NULL, windowMainSurface, NULL);
 
     if (controlPanelAsWindow) {
         window_control_panel = SDL_CreateWindow(programControlPanelTitle.c_str(),
             SDL_WINDOWPOS_CENTERED, 60,
             800, 78, SDL_WINDOW_SHOWN
         );
-        controlPanelImageSurface = SDL_LoadBMP( FILENAME_CONTROL_PANEL_STD.c_str() );
+        controlPanelImageSurface = SDL_LoadBMP(FILENAME_CONTROL_PANEL_STD.c_str());
         controlPanelSurface = SDL_GetWindowSurface(window_control_panel);
-        SDL_BlitSurface( controlPanelImageSurface, NULL, controlPanelSurface, NULL );
+        SDL_BlitSurface(controlPanelImageSurface, NULL, controlPanelSurface, NULL);
     }
 
     pixels = (unsigned int *) windowMainSurface->pixels;
@@ -790,6 +849,7 @@ int main(int argc, char* argv[]) {
     blockControlPanelArea();
 
     previousState = (unsigned int *) malloc(width * height * sizeof(unsigned int));
+    backupMainSurfaceState = (unsigned int *) malloc(width * height * sizeof(unsigned int));
 
     bool firstRun = true;
     printf("%sPrograma iniciado, aguardando um comando...\n", ROOT_LOG.c_str());
@@ -801,8 +861,6 @@ int main(int argc, char* argv[]) {
 
             firstRun = false;
             selectedColor.hasBeenSet = false;
-
-            drawSelectedColorViewer();
         }
 
         SDL_Event event;
