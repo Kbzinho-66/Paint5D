@@ -413,12 +413,22 @@ void resetScreen() {
     }
 }
 
+// Retorna uma cor (Uint32 RGB) aleatória.
+Uint32 getRandomColor() {
+    int r, g, b;
+    r = rand() % 255;
+    g = rand() % 255;
+    b = rand() % 255;
+
+    return RGB(r, g, b);
+}
+
 // Retorna a cor (Uint32 RGB) selecionada pelo usuário, caso haja alguma.
 Uint32 getSelectedColor() {
     if (selectedColor.hasBeenSet)
         return RGB(selectedColor.R, selectedColor.G, selectedColor.B);
     else
-        return RGB(0, 0, 0);
+        return getRandomColor();
 }
 
 void setSelectedColorAtViewer(Uint32 color) {
@@ -476,7 +486,8 @@ void setStatusIDLE(bool logInfo = true) {
 
 // Exporta o conteúdo da SDL_SURFACE para arquivo BMP.
 void saveBMP() {
-    SDL_Surface * tempSurface = SDL_CreateRGBSurface(0, 800, 520, 32, 0, 0, 0, 0);
+    int xTempSurface = 800, yTempSurface = controlPanelAsWindow ? 600 : 520;
+    SDL_Surface * tempSurface = SDL_CreateRGBSurface(0, xTempSurface, yTempSurface, 32, 0, 0, 0, 0);
     SDL_BlitSurface( windowMainSurface, NULL, tempSurface, NULL );
 
     std::string fileName = FILENAME_OUT + '_' + std::to_string(fileSeq++) + ".bmp";
