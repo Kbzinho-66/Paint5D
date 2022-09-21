@@ -404,9 +404,9 @@ void blockControlPanelArea(bool block = true) {
 
 // Faz uma cópia profunda do vetor de pixels. 
 // O flag global que diz se há alguma mudança para ser desfeita vai ser setado com base em newChange.
-inline void copyPixels(unsigned int *src, unsigned int *dest, bool newChange = true) {
+inline void copyPixels(unsigned int *src, unsigned int *dest, bool undo = false) {
     memcpy(dest, src, width * height * sizeof(unsigned int));
-    hasChange = newChange;
+    hasChange = !undo;
 }
 
 // Faz uma cópia profunda do vetor de pixels. 
@@ -439,29 +439,18 @@ void resetScreen() {
     }
 }
 
-// Retorna uma cor (Uint32 RGB) aleatória.
-Uint32 getRandomColor() {
-    int r, g, b;
-    r = rand() % 255;
-    g = rand() % 255;
-    b = rand() % 255;
-
-    return RGB(r, g, b);
-}
-
 // Retorna a cor (Uint32 RGB) selecionada pelo usuário, caso haja alguma.
 Uint32 getSelectedColor() {
     if (selectedColor.hasBeenSet)
         return RGB(selectedColor.R, selectedColor.G, selectedColor.B);
     else
-        return getRandomColor();
+        return RGB(0, 0, 0);
 }
 
 inline void clearSelectedFunctionViewer() {
     if (controlPanelAsWindow) {
         SDL_BlitSurface(controlPanelImageSurface, NULL, controlPanelSurface, NULL);
-    }
-    else {
+    } else {
         copyPixelsForFunctionSelection(pixels, backupMainSurfaceState);
         SDL_BlitSurface(imageInSurface, NULL, windowMainSurface, NULL);
         copyPixelsForFunctionSelection(backupMainSurfaceState, pixels);
@@ -535,15 +524,13 @@ void saveBMP() {
 }
 
 // ************ ALIASes PARA A CHAMADA DAS FUNÇÕES ************ //
-// TODO Marcar a opção selecionada
 void drawLine() {
     drawSelectedFunctionViewer(158, 535);
     if (f != Function::Line) {
         setStatusIDLE(false, false);
         printf("%sDesenhar Linha.\n", FUNCTION_LOG.c_str());
         f = Function::Line;
-    }
-    else {
+    } else {
         setStatusIDLE();
     }
 }
@@ -553,8 +540,7 @@ void drawRectangle() {
         setStatusIDLE(false, false);
         printf("%sDesenhar Retangulo.\n", FUNCTION_LOG.c_str());
         f = Function::Rectangle;
-    }
-    else {
+    } else {
         setStatusIDLE();
     }
 }
@@ -565,8 +551,7 @@ void drawPolygon() {
         setStatusIDLE(false, false);
 		printf("%sDesenhar Poligono.\n", FUNCTION_LOG.c_str());
 		f = Function::Polygon;
-	}
-    else {
+	} else {
         setStatusIDLE();
     }
 }
@@ -576,8 +561,7 @@ void drawCircle() {
         setStatusIDLE(false, false);
 		printf("%sDesenhar Circulo.\n", FUNCTION_LOG.c_str());
 		f = Function::Circle;
-	}
-    else {
+	} else {
         setStatusIDLE();
     }
 }
@@ -587,8 +571,7 @@ void drawBezier() {
         setStatusIDLE(false, false);
 		printf("%sDesenhar Curva de Bezier.\n", FUNCTION_LOG.c_str());
 		f = Function::Bezier;
-	}
-    else {
+	} else {
         setStatusIDLE();
     }
 }
@@ -597,8 +580,7 @@ void floodFill() {
     if (f != Function::Bucket) {
 		printf("%sFlood-Fill.\n", FUNCTION_LOG.c_str());
 		f = Function::Bucket;
-	}
-    else {
+	} else {
         setStatusIDLE();
     }
 }
@@ -628,7 +610,7 @@ void undoModification() {
     }
 
     printf("%sDesfazendo alteracao...\n", ROOT_LOG.c_str());
-    copyPixels(previousState, pixels, false);
+    copyPixels(previousState, pixels, true);
 
     if (f == Function::Polygon) {
         // O polígono precisa ser tratado como uma coisa inteira e não como as linhas que o
@@ -676,8 +658,7 @@ void handleClickSurface(Point p) {
                 // Copiar antes de começar a desenhar o polígono pra conseguir apagar todo ele.
                 copyPixels(pixels, previousState);
                 printf("%sPonto inicial do Poligono (X, Y): (%d, %d).\n", FUNCTION_ARGS_LOG.c_str(), p.x, p.y);
-            }
-            else {
+            } else {
                 bresenhamLine(points.back(), p, getSelectedColor());
             }
             points.push_back(p);
@@ -737,8 +718,7 @@ void handleClickControlPanel(Point p) {
             floodFill();
         if (722 <= p.x && p.x <= 776)
             undoModification();
-    }
-    else if (p.x >= 564 || p.x <= 720) {
+    } else if (p.x >= 564 || p.x <= 720) {
         // CORES
         if (540 <= p.y && p.y <= 550) {
             if (580 <= p.x && p.x <= 706) {
@@ -922,8 +902,7 @@ int main(int argc, char* argv[]) {
                 if (event.window.windowID == SDL_GetWindowID(window_main)) {
                     showMousePosition(window_main, xPosition, yPosition);
                     SDL_RaiseWindow(window_main);
-                }
-                else if (controlPanelAsWindow) {
+                } else if (controlPanelAsWindow) {
                     showMousePosition(window_control_panel, xPosition, yPosition, programControlPanelTitle.c_str());
                     SDL_RaiseWindow(window_control_panel);
                 }
