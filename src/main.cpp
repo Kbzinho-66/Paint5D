@@ -403,7 +403,7 @@ void blockControlPanelArea(bool block = true) {
 }
 
 // Faz uma cópia profunda do vetor de pixels. 
-// O flag global que diz se há alguma mudança para ser desfeita vai ser setado com base em newChange.
+// O parâmetro undo atualiza o flag global que indica se há alguma mudança pra desfazer
 inline void copyPixels(unsigned int *src, unsigned int *dest, bool undo = false) {
     memcpy(dest, src, width * height * sizeof(unsigned int));
     hasChange = !undo;
